@@ -1,4 +1,4 @@
-module caldav-server
+module dav-go
 
 go 1.22
 
