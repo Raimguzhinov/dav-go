@@ -1,2 +1,6 @@
-.idea/
-.env?
+# IDE
+.idea
+.vscode
+
+# Config
+.env
