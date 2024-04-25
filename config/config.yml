@@ -1,0 +1,13 @@
+app:
+  name: 'dav-go'
+  version: '1.0.0'
+
+http:
+  port: '8080'
+
+logger:
+  log_level: 'debug'
+  rollbar_env: 'dav-go'
+
+postgres:
+  pool_max: 2s
