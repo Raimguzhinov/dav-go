@@ -10,4 +10,4 @@ logger:
   rollbar_env: 'dav-go'
 
 postgres:
-  pool_max: 2s
+  pool_max: 2
