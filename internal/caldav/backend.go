@@ -3,8 +3,6 @@ package backend
 import (
 	"context"
 	"fmt"
-	"net/http/httptest"
-	"strings"
 
 	"github.com/Raimguzhinov/go-webdav/caldav"
 	"github.com/emersion/go-ical"
@@ -16,27 +14,15 @@ type Backend struct {
 }
 
 func New() *Backend {
-	var propFindUserPrincipal = `
-		<?xml version="1.0" encoding="UTF-8"?>
-		<A:propfind xmlns:A="DAV:">
-		  <A:prop>
-		    <A:current-user-principal/>
-		    <A:principal-URL/>
-		    <A:resourcetype/>
-		  </A:prop>
-		</A:propfind>
-	`
 	b := &Backend{
 		calendars: make([]caldav.Calendar, 0),
 		objectMap: make(map[string][]caldav.CalendarObject),
 	}
+
 	b.calendars = append(b.calendars, caldav.Calendar{Path: "/user/calendars/a", SupportedComponentSet: []string{"VEVENT"}})
 	b.calendars = append(b.calendars, caldav.Calendar{Path: "/user/calendars/b", SupportedComponentSet: []string{"VTODO"}})
 	b.objectMap["/user/calendars/a"] = make([]caldav.CalendarObject, 0)
 	b.objectMap["/user/calendars/b"] = make([]caldav.CalendarObject, 0)
-
-	req := httptest.NewRequest("PROPFIND", "/user/calendars/", strings.NewReader(propFindUserPrincipal))
-	req.Header.Set("Content-Type", "application/xml")
 
 	return b
 }
