@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Raimguhinov/dav-go/config"
+	"github.com/Raimguhinov/dav-go/configs"
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/httpserver"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func Run(cfg *config.Config) {
+func Run(cfg *configs.Config) {
 	l := logger.New(cfg.Log.Level)
 	b := backend.New()
 	var err error

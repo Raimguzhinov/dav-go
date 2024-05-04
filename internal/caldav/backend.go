@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"fmt"
-
 	"github.com/Raimguzhinov/go-webdav/caldav"
 	"github.com/emersion/go-ical"
 )
@@ -19,10 +18,8 @@ func New() *Backend {
 		objectMap: make(map[string][]caldav.CalendarObject),
 	}
 
-	b.calendars = append(b.calendars, caldav.Calendar{Path: "/user/calendars/a", SupportedComponentSet: []string{"VEVENT"}})
-	b.calendars = append(b.calendars, caldav.Calendar{Path: "/user/calendars/b", SupportedComponentSet: []string{"VTODO"}})
-	b.objectMap["/user/calendars/a"] = make([]caldav.CalendarObject, 0)
-	b.objectMap["/user/calendars/b"] = make([]caldav.CalendarObject, 0)
+	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/user/calendars/a/", SupportedComponentSet: []string{"VEVENT"}})
+	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/user/calendars/b/", SupportedComponentSet: []string{"VTODO"}})
 
 	return b
 }
@@ -74,6 +71,12 @@ func (s *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		Data: calendar,
 	}
 	s.objectMap[path] = append(s.objectMap[path], object)
+
+	fmt.Println(object.ModTime)
+	fmt.Println(object.ETag)
+	fmt.Println(object.Data)
+	fmt.Println(object.ContentLength)
+
 	return path, nil
 }
 

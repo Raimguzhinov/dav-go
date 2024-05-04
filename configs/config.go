@@ -1,4 +1,4 @@
-package config
+package configs
 
 import (
 	"fmt"
@@ -38,13 +38,13 @@ type (
 	}
 )
 
-// NewConfig returns app config.
+// NewConfig returns app configs.
 func NewConfig() (*Config, error) {
 	cfg := &Config{}
 
-	err := cleanenv.ReadConfig("./config/config.yml", cfg)
+	err := cleanenv.ReadConfig("./configs/config.yml", cfg)
 	if err != nil {
-		return nil, fmt.Errorf("config error: %w", err)
+		return nil, fmt.Errorf("configs error: %w", err)
 	}
 
 	err = cleanenv.ReadEnv(cfg)
