@@ -7,18 +7,17 @@ import (
 	"syscall"
 
 	"github.com/Raimguhinov/dav-go/configs"
-	backend "github.com/Raimguhinov/dav-go/internal/caldav"
+	"github.com/Raimguhinov/dav-go/internal/storage"
 	"github.com/Raimguhinov/dav-go/pkg/httpserver"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/Raimguzhinov/go-webdav/caldav"
+	"github.com/emersion/go-webdav/caldav"
+	"github.com/emersion/go-webdav/carddav"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 func Run(cfg *configs.Config) {
 	l := logger.New(cfg.Log.Level)
-	b := backend.New()
-	var err error
 
 	// HTTP Server
 	for _, method := range []string{
@@ -35,8 +34,33 @@ func Run(cfg *configs.Config) {
 	s := chi.NewRouter()
 	s.Use(middleware.Logger)
 
-	handler := caldav.Handler{Backend: b, Prefix: "/dav"}
+	//authProvider, err := auth.NewFromURL(authURL)
+	//if err != nil {
+	//	l.Error(fmt.Errorf("failed to load auth provider: %w", err))
+	//}
+	//s.Use(authProvider.Middleware())
+
+	upBackend := &userPrincipalBackend{}
+
+	caldavBackend, carddavBackend, err := storage.NewFromURL(cfg.PG.URL, "/calendars/", "/contacts/", upBackend)
+	if err != nil {
+		l.Error(fmt.Errorf("failed to load storage backend: %w", err))
+	}
+
+	carddavHandler := carddav.Handler{Backend: carddavBackend}
+	caldavHandler := caldav.Handler{Backend: caldavBackend}
+	handler := davHandler{
+		upBackend: upBackend,
+		//authBackend:    authProvider,
+		caldavBackend:  caldavBackend,
+		carddavBackend: carddavBackend,
+	}
+
 	s.Mount("/", &handler)
+	s.Mount("/.well-known/caldav", &caldavHandler)
+	s.Mount("/.well-known/carddav", &carddavHandler)
+	s.Mount("/{user}/contacts", &carddavHandler)
+	s.Mount("/{user}/calendars", &caldavHandler)
 
 	httpServer := httpserver.New(s, httpserver.Port(cfg.HTTP.Port))
 

@@ -3,8 +3,9 @@ package backend
 import (
 	"context"
 	"fmt"
-	"github.com/Raimguzhinov/go-webdav/caldav"
+
 	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav/caldav"
 )
 
 type Backend struct {
@@ -18,8 +19,8 @@ func New() *Backend {
 		objectMap: make(map[string][]caldav.CalendarObject),
 	}
 
-	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/user/calendars/a/", SupportedComponentSet: []string{"VEVENT"}})
-	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/user/calendars/b/", SupportedComponentSet: []string{"VTODO"}})
+	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/admin/calendars/a/", SupportedComponentSet: []string{"VEVENT"}})
+	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/admin/calendars/b/", SupportedComponentSet: []string{"VTODO"}})
 
 	return b
 }
@@ -42,11 +43,11 @@ func (s *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 }
 
 func (s *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
-	return "/user/calendars/", nil
+	return "/admin/calendars/", nil
 }
 
 func (s *Backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
-	return "/user/", nil
+	return "/admin/", nil
 }
 
 func (s *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
@@ -71,12 +72,6 @@ func (s *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		Data: calendar,
 	}
 	s.objectMap[path] = append(s.objectMap[path], object)
-
-	fmt.Println(object.ModTime)
-	fmt.Println(object.ETag)
-	fmt.Println(object.Data)
-	fmt.Println(object.ContentLength)
-
 	return path, nil
 }
 
@@ -84,6 +79,6 @@ func (s *Backend) ListCalendarObjects(ctx context.Context, path string, req *cal
 	return s.objectMap[path], nil
 }
 
-func (s *Backend) QueryCalendarObjects(ctx context.Context, path string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+func (s *Backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
 	return nil, nil
 }

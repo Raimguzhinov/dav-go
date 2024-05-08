@@ -4,8 +4,8 @@ go 1.22.2
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/Raimguzhinov/go-webdav v0.0.0-20240401183055-7ebabd13384b
 	github.com/emersion/go-ical v0.0.0-20220601085725-0864dccc089f
+	github.com/emersion/go-webdav v0.5.0
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v4 v4.18.3
@@ -14,6 +14,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.14.3 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
