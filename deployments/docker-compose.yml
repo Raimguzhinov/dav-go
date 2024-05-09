@@ -2,14 +2,14 @@ version: '3.9'
 services:
 
   postgres:
-    container_name: postgres
+    container_name: repo
     image: postgres
     volumes:
       - pg-data:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: 'postgres'
-      POSTGRES_PASSWORD: 'postgres'
-      POSTGRES_DB: 'postgres'
+      POSTGRES_USER: 'repo'
+      POSTGRES_PASSWORD: 'repo'
+      POSTGRES_DB: 'repo'
     ports:
       - 5432:5432
 

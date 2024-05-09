@@ -14,6 +14,10 @@ migrate-up: ### migration up
 	migrate -path migrations -database '$(PG_URL)?sslmode=disable' up
 .PHONY: migrate-up
 
+migrate-down: ### migration down
+	migrate -path migrations -database '$(PG_URL)?sslmode=disable' down
+.PHONY: migrate-up
+
 bin-deps:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	go install github.com/golang/mock/mockgen@latest

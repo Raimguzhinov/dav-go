@@ -1,4 +1,4 @@
-package backend
+package caldav
 
 import (
 	"context"
@@ -9,76 +9,83 @@ import (
 )
 
 type Backend struct {
-	calendars []caldav.Calendar
-	objectMap map[string][]caldav.CalendarObject
+	repo Repository
 }
 
-func New() *Backend {
+func New(repository Repository) (*Backend, error) {
 	b := &Backend{
-		calendars: make([]caldav.Calendar, 0),
-		objectMap: make(map[string][]caldav.CalendarObject),
+		repo: repository,
 	}
 
-	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/admin/calendars/a/", SupportedComponentSet: []string{"VEVENT"}})
-	b.calendars = append(b.calendars, caldav.Calendar{Name: "VCALENDAR", Path: "/admin/calendars/b/", SupportedComponentSet: []string{"VTODO"}})
-
-	return b
+	if err := b.repo.CreateFolder(
+		context.Background(),
+		&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VEVENT"}},
+	); err != nil {
+		return nil, err
+	}
+	if err := b.repo.CreateFolder(
+		context.Background(),
+		&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VTODO"}},
+	); err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
-func (s *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
-	return nil
+func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+	return b.repo.FindFolders(ctx)
 }
 
-func (s *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
-	return s.calendars, nil
-}
-
-func (s *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
-	for _, cal := range s.calendars {
+func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
+	cals, err := b.repo.FindFolders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, cal := range cals {
 		if cal.Path == path {
 			return &cal, nil
 		}
 	}
-	return nil, fmt.Errorf("calendar for path: %s not found", path)
+	return nil, fmt.Errorf("calendar for path: %b not found", path)
 }
 
-func (s *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
 	return "/admin/calendars/", nil
 }
 
-func (s *Backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
+func (b *Backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
 	return "/admin/", nil
 }
 
-func (s *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	delete(s.objectMap, path)
+func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
+	//delete(b.objectMap, path)
 	return nil
 }
 
-func (s *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	for _, objs := range s.objectMap {
-		for _, obj := range objs {
-			if obj.Path == path {
-				return &obj, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("couldn't find calendar object at: %s", path)
+func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+	//for _, objs := range b.objectMap {
+	//	for _, obj := range objs {
+	//		if obj.Path == path {
+	//			return &obj, nil
+	//		}
+	//	}
+	//}
+	return nil, fmt.Errorf("couldn't find calendar object at: %b", path)
 }
 
-func (s *Backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {
-	object := caldav.CalendarObject{
-		Path: path,
-		Data: calendar,
-	}
-	s.objectMap[path] = append(s.objectMap[path], object)
+func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {
+	//object := caldav.CalendarObject{
+	//	Path: path,
+	//	Data: calendar,
+	//}
+	//b.objectMap[path] = append(b.objectMap[path], object)
 	return path, nil
 }
 
-func (s *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	return s.objectMap[path], nil
+func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	return nil, nil
 }
 
-func (s *Backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+func (b *Backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
 	return nil, nil
 }

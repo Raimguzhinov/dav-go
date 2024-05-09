@@ -1,15 +1,17 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Raimguhinov/dav-go/configs"
-	"github.com/Raimguhinov/dav-go/internal/storage"
+	"github.com/Raimguhinov/dav-go/internal/usecase"
 	"github.com/Raimguhinov/dav-go/pkg/httpserver"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
+	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/go-chi/chi/v5"
@@ -18,6 +20,13 @@ import (
 
 func Run(cfg *configs.Config) {
 	l := logger.New(cfg.Log.Level)
+
+	// Repository
+	pg, err := postgres.New(context.TODO(), cfg.PG.URL, postgres.MaxPoolSize(cfg.PG.PoolMax))
+	if err != nil {
+		l.Fatal(fmt.Errorf("app - Run - repo.New: %w", err))
+	}
+	defer pg.Close()
 
 	// HTTP Server
 	for _, method := range []string{
@@ -41,8 +50,9 @@ func Run(cfg *configs.Config) {
 	//s.Use(authProvider.Middleware())
 
 	upBackend := &userPrincipalBackend{}
+	url := usecase.NewURL(cfg.PG.URL, "/calendars/", "/contacts/", upBackend)
 
-	caldavBackend, carddavBackend, err := storage.NewFromURL(cfg.PG.URL, "/calendars/", "/contacts/", upBackend)
+	caldavBackend, carddavBackend, err := usecase.NewFromURL(url, pg, l)
 	if err != nil {
 		l.Error(fmt.Errorf("failed to load storage backend: %w", err))
 	}
