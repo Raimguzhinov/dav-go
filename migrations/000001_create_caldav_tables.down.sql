@@ -11,4 +11,6 @@ DROP TABLE IF EXISTS public.access;
 DROP TABLE IF EXISTS public.calendar_folder_property;
 DROP TABLE IF EXISTS public.calendar_folder;
 
+DROP PROCEDURE IF EXISTS create_or_update_calendar_file;
+
 COMMIT;

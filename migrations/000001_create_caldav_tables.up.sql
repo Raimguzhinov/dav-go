@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS public.calendar_file
     id                 UUID PRIMARY KEY,
     calendar_folder_id BIGINT    NOT NULL,
     etag               TIMESTAMP NOT NULL,
-    created_at         DATE      NOT NULL,
-    modified_at        DATE      NOT NULL,
+    created_at         TIMESTAMP NOT NULL,
+    modified_at        TIMESTAMP NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES public.calendar_folder (id)
 );
 
@@ -146,5 +146,51 @@ CREATE TABLE IF NOT EXISTS public.recurrence_exception
     all_day            BIT    NOT NULL,
     CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES public.event_component (id)
 );
+
+CREATE OR REPLACE PROCEDURE create_or_update_calendar_file(
+    IN _calendar_uid UUID,
+    IN _calendar_folder_name VARCHAR(50),
+    IN _etag TIMESTAMP,
+    IN _modified_at TIMESTAMP
+)
+    LANGUAGE plpgsql AS
+$$
+DECLARE
+    _calendar_folder_id BIGINT;
+BEGIN
+    -- Получим идентификатор папки календаря по ее имени
+    SELECT id
+    INTO _calendar_folder_id
+    FROM calendar_folder
+    WHERE name = _calendar_folder_name;
+    -- Попробуем найти существующий файл календаря
+    IF EXISTS (SELECT 1
+               FROM calendar_file
+               WHERE id = _calendar_uid) THEN
+        -- Если файл существует, обновим поля etag и modified_at
+        UPDATE calendar_file
+        SET etag        = _etag,
+            modified_at = _modified_at
+        WHERE id = _calendar_uid;
+    ELSE
+        -- Иначе вставим новый файл календаря
+        INSERT INTO calendar_file (id,
+                                   calendar_folder_id,
+                                   etag,
+                                   created_at,
+                                   modified_at)
+        VALUES (_calendar_uid,
+                _calendar_folder_id,
+                _etag,
+                now()::timestamp,
+                now()::timestamp);
+    END IF;
+END;
+$$;
+
+INSERT INTO public.calendar_folder (name, description)
+VALUES ('VEVENT', 'cals');
+INSERT INTO public.calendar_folder (name, description)
+VALUES ('VTODO', 'todos');
 
 COMMIT;

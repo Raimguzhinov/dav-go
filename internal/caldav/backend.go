@@ -1,8 +1,12 @@
 package caldav
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"path"
+	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -17,18 +21,18 @@ func New(repository Repository) (*Backend, error) {
 		repo: repository,
 	}
 
-	if err := b.repo.CreateFolder(
-		context.Background(),
-		&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VEVENT"}},
-	); err != nil {
-		return nil, err
-	}
-	if err := b.repo.CreateFolder(
-		context.Background(),
-		&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VTODO"}},
-	); err != nil {
-		return nil, err
-	}
+	//if err := b.repo.CreateFolder(
+	//	context.Background(),
+	//	&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VEVENT"}},
+	//); err != nil {
+	//	return nil, err
+	//}
+	//if err := b.repo.CreateFolder(
+	//	context.Background(),
+	//	&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VTODO"}},
+	//); err != nil {
+	//	return nil, err
+	//}
 	return b, nil
 }
 
@@ -46,7 +50,7 @@ func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 			return &cal, nil
 		}
 	}
-	return nil, fmt.Errorf("calendar for path: %b not found", path)
+	return nil, fmt.Errorf("calendar for path: %s not found", path)
 }
 
 func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
@@ -73,13 +77,34 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 	return nil, fmt.Errorf("couldn't find calendar object at: %b", path)
 }
 
-func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {
-	//object := caldav.CalendarObject{
-	//	Path: path,
-	//	Data: calendar,
-	//}
-	//b.objectMap[path] = append(b.objectMap[path], object)
-	return path, nil
+func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {
+	eventType, uid, err := caldav.ValidateCalendarObject(calendar)
+	if err != nil {
+		return "", caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
+	}
+	// Object always get saved as <UID>.ics
+	dirname, _ := path.Split(objPath)
+	objPath = path.Join(dirname, uid+".ics")
+
+	f := bufio.NewWriter(bytes.NewBuffer([]byte{}))
+
+	enc := ical.NewEncoder(f)
+	err = enc.Encode(calendar)
+	if err != nil {
+		return "", err
+	}
+
+	size := int64(f.Size())
+	etag := time.Now().UTC().Format(time.RFC3339Nano)
+
+	object := caldav.CalendarObject{
+		Path:          objPath,
+		ContentLength: size,
+		Data:          calendar,
+		ETag:          etag,
+		ModTime:       time.Now().UTC(),
+	}
+	return b.repo.PutObject(ctx, uid, eventType, &object, opts)
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {

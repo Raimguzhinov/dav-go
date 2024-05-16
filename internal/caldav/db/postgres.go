@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -16,6 +17,13 @@ import (
 type repository struct {
 	client *postgres.Postgres
 	logger *logger.Logger
+}
+
+func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Repository {
+	return &repository{
+		client: client,
+		logger: logger,
+	}
 }
 
 type folder struct {
@@ -72,9 +80,27 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	return calendars, nil
 }
 
-func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Repository {
-	return &repository{
-		client: client,
-		logger: logger,
+func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (string, error) {
+	// calendar_folder_id тот, для которого calendar_folder.name = eventType
+	q := `
+		CALL create_or_update_calendar_file($1, $2, $3, $4)
+	`
+	t, err := time.Parse(time.RFC3339Nano, object.ETag)
+	if err != nil {
+		return "", err
 	}
+	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, t, object.ModTime)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
+		}
+		return "", err
+	}
+
+	return object.Path, nil
+}
+
+func (r *repository) CreateEvent(ctx context.Context, calendar *caldav.Calendar) error {
+	return nil
 }
