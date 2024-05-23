@@ -1,13 +1,165 @@
 BEGIN;
 
+CREATE SCHEMA IF NOT EXISTS carddav;
 CREATE SCHEMA IF NOT EXISTS caldav;
+
+CREATE TABLE IF NOT EXISTS carddav.addressbook_folder
+(
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name        VARCHAR(50) NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS carddav.addressbook_folder_property
+(
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    addressbook_folder_id BIGINT       NOT NULL,
+    name                  VARCHAR(255) NOT NULL,
+    namespace             VARCHAR(100) NOT NULL,
+    prop_value            TEXT         NOT NULL,
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.access
+(
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    addressbook_folder_id BIGINT      NOT NULL,
+    user_id               VARCHAR(50) NOT NULL,
+    owner                 BIT         NOT NULL,
+    read                  BIT         NOT NULL,
+    write                 BIT         NOT NULL,
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.card_file
+(
+    uid                   UUID PRIMARY KEY,
+    addressbook_folder_id BIGINT       NOT NULL,
+    file_name             VARCHAR(255) NOT NULL,
+    etag                  TIMESTAMP    NOT NULL,
+    created_at            TIMESTAMP    NOT NULL,
+    modified_at           TIMESTAMP    NOT NULL,
+    version               VARCHAR(5)   NOT NULL,
+    formatted_name        VARCHAR(100) NOT NULL,
+    family_name           VARCHAR(100) NOT NULL,
+    given_name            VARCHAR(100) NOT NULL,
+    additional_names      VARCHAR(100) NOT NULL,
+    honorific_prefix      VARCHAR(10)  NOT NULL,
+    honorific_suffix      VARCHAR(10)  NOT NULL,
+    product               VARCHAR(100),
+    kind                  VARCHAR(10),
+    nickname              VARCHAR(50),
+    photo                 BYTEA,
+    photo_media_type      VARCHAR(10),
+    logo                  BYTEA,
+    logo_media_type       VARCHAR(10),
+    sound                 BYTEA,
+    sound_media_type      VARCHAR(10),
+    birthday              DATE,
+    anniversary           DATE,
+    gender                VARCHAR(1),
+    revision_at           TIMESTAMP,
+    sort_string           VARCHAR(100),
+    language              VARCHAR(50),
+    timezone              VARCHAR(50),
+    geo                   POINT,
+    title                 TEXT,
+    role                  VARCHAR(50),
+    org_name              VARCHAR(100),
+    org_unit              VARCHAR(50),
+    categories            VARCHAR(50),
+    note                  TEXT,
+    classification        VARCHAR(50),
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+);
+
+CREATE INDEX ON carddav.card_file USING GIST (geo);
+
+CREATE TABLE IF NOT EXISTS carddav.custom_property
+(
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    parent_id       BIGINT       NOT NULL,
+    card_file_uid   UUID         NOT NULL,
+    client_app_name VARCHAR(50),
+    prop_name       VARCHAR(50)  NOT NULL,
+    parameter_name  VARCHAR(50),
+    value           VARCHAR(512) NOT NULL,
+    sort_index      INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.email
+(
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    card_file_uid    UUID         NOT NULL,
+    type             VARCHAR(20),
+    email            VARCHAR(100) NOT NULL,
+    preference_level SMALLINT,
+    sort_index       INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.telephone
+(
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    card_file_uid    UUID        NOT NULL,
+    type             VARCHAR(20),
+    telephone        VARCHAR(20) NOT NULL,
+    preference_level SMALLINT,
+    sort_index       INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.url
+(
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    card_file_uid    UUID NOT NULL,
+    type             VARCHAR(20),
+    url              TEXT NOT NULL,
+    preference_level SMALLINT,
+    sort_index       INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.instant_messenger
+(
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    card_file_uid     UUID NOT NULL,
+    type              VARCHAR(20),
+    instant_messenger TEXT NOT NULL,
+    preference_level  SMALLINT,
+    sort_index        INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE TABLE IF NOT EXISTS carddav.address
+(
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    card_file_uid     UUID NOT NULL,
+    type              VARCHAR(20),
+    po_box            VARCHAR(10),
+    appartment_number VARCHAR(10),
+    street            VARCHAR(50),
+    locality          VARCHAR(50),
+    region            VARCHAR(50),
+    postal_code       VARCHAR(10),
+    country           VARCHAR(20),
+    preference_level  SMALLINT,
+    label             VARCHAR(20),
+    geo               POINT,
+    timezone          VARCHAR(50),
+    sort_index        INT,
+    CONSTRAINT fk_card_file_uid FOREIGN KEY (card_file_uid) REFERENCES carddav.card_file (uid)
+);
+
+CREATE INDEX ON carddav.address USING GIST (geo);
 
 CREATE TYPE caldav.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
 
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(50) NOT NULL,
+    name        VARCHAR(50)          NOT NULL,
     type        caldav.calendar_type NOT NULL,
     description TEXT
 );
@@ -57,7 +209,7 @@ CREATE TABLE IF NOT EXISTS caldav.custom_property
     calendar_file_uid UUID         NOT NULL,
     prop_name         VARCHAR(50)  NOT NULL,
     parameter_name    VARCHAR(50),
-    value             varchar(512) NOT NULL,
+    value             VARCHAR(512) NOT NULL,
     CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
 );
 
@@ -189,10 +341,10 @@ BEGIN
         WHERE uid = _calendar_uid;
     ELSE
         INSERT INTO caldav.calendar_file (uid,
-                                   calendar_folder_id,
-                                   etag,
-                                   created_at,
-                                   modified_at)
+                                          calendar_folder_id,
+                                          etag,
+                                          created_at,
+                                          modified_at)
         VALUES (_calendar_uid,
                 _calendar_folder_id,
                 _etag,

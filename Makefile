@@ -7,7 +7,7 @@ compose-down: ### Down docker-compose
 .PHONY: compose-down
 
 migrate-create:  ### create new migration
-	migrate create -ext sql -dir migrations -seq 'create_caldav_tables'
+	migrate create -ext sql -dir migrations -seq 'init'
 .PHONY: migrate-create
 
 migrate-up: ### migration up
