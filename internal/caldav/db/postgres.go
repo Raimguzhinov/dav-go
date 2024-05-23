@@ -35,7 +35,7 @@ type folder struct {
 func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar) error {
 	var f folder
 	q := `
-		INSERT INTO calendar_folder (name, type, description)
+		INSERT INTO caldav.calendar_folder (name, type, description)
 		VALUES ($1, $2, $3)
 		RETURNING id
 	`
@@ -55,7 +55,7 @@ func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar
 
 func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error) {
 	q := `
-		SELECT id, name, type, COALESCE(description, '') as description FROM calendar_folder
+		SELECT id, name, type, COALESCE(description, '') as description FROM caldav.calendar_folder
 	`
 	r.logger.Debug(q)
 

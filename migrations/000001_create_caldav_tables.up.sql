@@ -1,33 +1,35 @@
 BEGIN;
 
-CREATE TYPE public.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
+CREATE SCHEMA IF NOT EXISTS caldav;
 
-CREATE TABLE IF NOT EXISTS public.calendar_folder
+CREATE TYPE caldav.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
+
+CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name        VARCHAR(50) NOT NULL,
-    type        calendar_type NOT NULL,
+    type        caldav.calendar_type NOT NULL,
     description TEXT
 );
 
-CREATE TABLE IF NOT EXISTS public.calendar_folder_property
+CREATE TABLE IF NOT EXISTS caldav.calendar_folder_property
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     calendar_folder_id BIGINT       NOT NULL,
     name               VARCHAR(255) NOT NULL,
     namespace          VARCHAR(100) NOT NULL,
     prop_value         TEXT         NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES public.calendar_folder (id)
+    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
-INSERT INTO public.calendar_folder (name, type)
+INSERT INTO caldav.calendar_folder (name, type)
 VALUES ('calendars', 'VEVENT');
-INSERT INTO public.calendar_folder (name, type)
+INSERT INTO caldav.calendar_folder (name, type)
 VALUES ('todos', 'VTODO');
-INSERT INTO public.calendar_folder (name, type)
+INSERT INTO caldav.calendar_folder (name, type)
 VALUES ('journals', 'VJOURNAL');
 
-CREATE TABLE IF NOT EXISTS public.access
+CREATE TABLE IF NOT EXISTS caldav.access
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     calendar_folder_id BIGINT      NOT NULL,
@@ -35,20 +37,20 @@ CREATE TABLE IF NOT EXISTS public.access
     owner              BIT         NOT NULL,
     read               BIT         NOT NULL,
     write              BIT         NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES public.calendar_folder (id)
+    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.calendar_file
+CREATE TABLE IF NOT EXISTS caldav.calendar_file
 (
     uid                UUID PRIMARY KEY,
     calendar_folder_id BIGINT    NOT NULL,
     etag               TIMESTAMP NOT NULL,
     created_at         TIMESTAMP NOT NULL,
     modified_at        TIMESTAMP NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES public.calendar_folder (id)
+    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.custom_property
+CREATE TABLE IF NOT EXISTS caldav.custom_property
 (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     parent_id         BIGINT       NOT NULL,
@@ -56,10 +58,10 @@ CREATE TABLE IF NOT EXISTS public.custom_property
     prop_name         VARCHAR(50)  NOT NULL,
     parameter_name    VARCHAR(50),
     value             varchar(512) NOT NULL,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES public.calendar_file (uid)
+    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
 );
 
-CREATE TABLE IF NOT EXISTS public.event_component
+CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     calendar_file_uid     UUID NOT NULL,
@@ -86,10 +88,10 @@ CREATE TABLE IF NOT EXISTS public.event_component
     event_transparency    BIT,
     todo_completed        DATE,
     todo_percent_complete SMALLINT,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES public.calendar_file (uid)
+    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
 );
 
-CREATE TABLE IF NOT EXISTS public.attachment
+CREATE TABLE IF NOT EXISTS caldav.attachment
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_component_id BIGINT NOT NULL,
@@ -97,10 +99,10 @@ CREATE TABLE IF NOT EXISTS public.attachment
     media_type         VARCHAR(255),
     external_url       TEXT,
     content            BYTEA,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES public.event_component (id)
+    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.attendee
+CREATE TABLE IF NOT EXISTS caldav.attendee
 (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_component_id   BIGINT NOT NULL,
@@ -116,10 +118,10 @@ CREATE TABLE IF NOT EXISTS public.attendee
     rsvp                 BIT,
     participation_role   VARCHAR(15),
     participation_status VARCHAR(15),
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES public.event_component (id)
+    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.alarm
+CREATE TABLE IF NOT EXISTS caldav.alarm
 (
     id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_component_id        BIGINT      NOT NULL,
@@ -132,10 +134,10 @@ CREATE TABLE IF NOT EXISTS public.alarm
     description               TEXT,
     duration                  BIGINT,
     repeat                    INT,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES public.event_component (id)
+    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.recurrence
+CREATE TABLE IF NOT EXISTS caldav.recurrence
 (
     id                         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_component_id         BIGINT NOT NULL,
@@ -149,10 +151,10 @@ CREATE TABLE IF NOT EXISTS public.recurrence
     recurrence_id_date         DATE,
     recurrence_id_timezone_id  VARCHAR(255),
     recurrence_this_and_future BIT,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES public.event_component (id)
+    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
 );
 
-CREATE TABLE IF NOT EXISTS public.recurrence_exception
+CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     recurrence_id  BIGINT NOT NULL,
@@ -160,12 +162,12 @@ CREATE TABLE IF NOT EXISTS public.recurrence_exception
     exception_date DATE   NOT NULL,
     timezone_id    VARCHAR(255),
     all_day        BIT    NOT NULL,
-    CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES public.recurrence (id)
+    CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES caldav.recurrence (id)
 );
 
-CREATE OR REPLACE PROCEDURE public.create_or_update_calendar_file(
+CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(
     IN _calendar_uid UUID,
-    IN _calendar_folder_type public.calendar_type,
+    IN _calendar_folder_type caldav.calendar_type,
     IN _etag TIMESTAMP,
     IN _modified_at TIMESTAMP
 )
@@ -176,17 +178,17 @@ DECLARE
 BEGIN
     SELECT id
     INTO _calendar_folder_id
-    FROM public.calendar_folder
+    FROM caldav.calendar_folder
     WHERE type = _calendar_folder_type;
     IF EXISTS (SELECT 1
-               FROM public.calendar_file
+               FROM caldav.calendar_file
                WHERE uid = _calendar_uid) THEN
-        UPDATE public.calendar_file
+        UPDATE caldav.calendar_file
         SET etag        = _etag,
             modified_at = _modified_at
         WHERE uid = _calendar_uid;
     ELSE
-        INSERT INTO public.calendar_file (uid,
+        INSERT INTO caldav.calendar_file (uid,
                                    calendar_folder_id,
                                    etag,
                                    created_at,
