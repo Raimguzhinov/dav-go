@@ -23,13 +23,7 @@ func New(repository Repository) (*Backend, error) {
 
 	//if err := b.repo.CreateFolder(
 	//	context.Background(),
-	//	&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VEVENT"}},
-	//); err != nil {
-	//	return nil, err
-	//}
-	//if err := b.repo.CreateFolder(
-	//	context.Background(),
-	//	&caldav.Calendar{Name: "VCALENDAR", SupportedComponentSet: []string{"VTODO"}},
+	//	&caldav.Calendar{Name: "Calendar", SupportedComponentSet: []string{"VEVENT", "VTODO"}},
 	//); err != nil {
 	//	return nil, err
 	//}
@@ -45,6 +39,7 @@ func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 	if err != nil {
 		return nil, err
 	}
+
 	for _, cal := range cals {
 		if cal.Path == path {
 			return &cal, nil

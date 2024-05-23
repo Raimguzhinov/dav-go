@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"strconv"
 	"time"
 
@@ -27,23 +28,26 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 }
 
 type folder struct {
-	ID int `json:"id"`
+	ID   int    `json:"id"`
+	Type string `json:"type"`
 }
 
 func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar) error {
 	var f folder
 	q := `
-		INSERT INTO calendar_folder (name, description)
-		VALUES ($1, $2)
+		INSERT INTO calendar_folder (name, type, description)
+		VALUES ($1, $2, $3)
 		RETURNING id
 	`
-	r.logger.Debug(q)
-	if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendar.Description).Scan(&f.ID); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
+	for _, calendarType := range calendar.SupportedComponentSet {
+		r.logger.Debug(q)
+		if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendarType, calendar.Description).Scan(&f.ID); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
+				r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
+			}
+			return err
 		}
-		return err
 	}
 	calendar.Path = "admin" + "/calendars/" + strconv.Itoa(f.ID) + "/"
 	return nil
@@ -51,7 +55,7 @@ func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar
 
 func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error) {
 	q := `
-		SELECT id, name, description FROM calendar_folder
+		SELECT id, name, type, COALESCE(description, '') as description FROM calendar_folder
 	`
 	r.logger.Debug(q)
 
@@ -60,22 +64,20 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		return nil, err
 	}
 
+	var f folder
 	calendars := make([]caldav.Calendar, 0)
 
 	for rows.Next() {
-		var f folder
 		var calendar caldav.Calendar
 
-		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description)
+		err = rows.Scan(&f.ID, &calendar.Name, &f.Type, &calendar.Description)
 		if err != nil {
 			return nil, err
 		}
-		calendar.Path = "admin" + "/calendars/" + strconv.Itoa(f.ID) + "/"
+		calendar.Path = path.Join("admin", "calendars", strconv.Itoa(f.ID))
+		calendar.SupportedComponentSet = append(calendar.SupportedComponentSet, f.Type)
 
 		calendars = append(calendars, calendar)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return calendars, nil
 }
@@ -85,6 +87,7 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	q := `
 		CALL create_or_update_calendar_file($1, $2, $3, $4)
 	`
+	fmt.Println(object.Data.Events())
 	t, err := time.Parse(time.RFC3339Nano, object.ETag)
 	if err != nil {
 		return "", err
@@ -97,7 +100,6 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 		}
 		return "", err
 	}
-
 	return object.Path, nil
 }
 
