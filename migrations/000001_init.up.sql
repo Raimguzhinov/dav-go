@@ -195,10 +195,10 @@ CREATE TABLE IF NOT EXISTS caldav.access
 CREATE TABLE IF NOT EXISTS caldav.calendar_file
 (
     uid                UUID PRIMARY KEY,
-    calendar_folder_id BIGINT    NOT NULL,
-    etag               TIMESTAMP NOT NULL,
-    created_at         TIMESTAMP NOT NULL,
-    modified_at        TIMESTAMP NOT NULL,
+    calendar_folder_id BIGINT      NOT NULL,
+    etag               VARCHAR(40) NOT NULL, -- SHA-1 hash encoded in base64
+    created_at         TIMESTAMP   NOT NULL,
+    modified_at        TIMESTAMP   NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
@@ -320,36 +320,55 @@ CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(
     IN _calendar_uid UUID,
     IN _calendar_folder_type caldav.calendar_type,
-    IN _etag TIMESTAMP,
-    IN _modified_at TIMESTAMP
+    IN _etag VARCHAR(40),
+    IN _want_etag VARCHAR(40),
+    IN _modified_at TIMESTAMP,
+    IN _if_none_match BOOLEAN DEFAULT FALSE,
+    IN _if_match BOOLEAN DEFAULT FALSE
 )
     LANGUAGE plpgsql AS
 $$
 DECLARE
     _calendar_folder_id BIGINT;
+    _current_etag       VARCHAR(40);
 BEGIN
+    -- Получаем ID папки календаря по типу
     SELECT id
     INTO _calendar_folder_id
     FROM caldav.calendar_folder
     WHERE type = _calendar_folder_type;
-    IF EXISTS (SELECT 1
-               FROM caldav.calendar_file
-               WHERE uid = _calendar_uid) THEN
+
+    -- Проверяем, существует ли запись в таблице calendar_file
+    SELECT etag
+    INTO _current_etag
+    FROM caldav.calendar_file
+    WHERE uid = _calendar_uid;
+
+    IF FOUND THEN
+        -- Если запись существует и установлен If-None-Match, то возвращаем ошибку
+        IF _if_none_match THEN
+            RAISE EXCEPTION 'Precondition failed: If-None-Match header is set and resource exists';
+        END IF;
+
+        -- Если запись существует и установлен If-Match, проверяем ETag
+        IF _if_match AND _current_etag IS DISTINCT FROM _want_etag THEN
+            RAISE EXCEPTION 'Precondition failed: If-Match header is set and ETag does not match';
+        END IF;
+
+        -- Обновляем запись
         UPDATE caldav.calendar_file
         SET etag        = _etag,
             modified_at = _modified_at
         WHERE uid = _calendar_uid;
     ELSE
-        INSERT INTO caldav.calendar_file (uid,
-                                          calendar_folder_id,
-                                          etag,
-                                          created_at,
-                                          modified_at)
-        VALUES (_calendar_uid,
-                _calendar_folder_id,
-                _etag,
-                now()::timestamp,
-                now()::timestamp);
+        -- Если запись не существует и установлен If-Match, то возвращаем ошибку
+        IF _if_match THEN
+            RAISE EXCEPTION 'Precondition failed: If-Match header is set and resource does not exist';
+        END IF;
+
+        -- Вставляем новую запись
+        INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at)
+        VALUES (_calendar_uid, _calendar_folder_id, _etag, now()::timestamp, now()::timestamp);
     END IF;
 END;
 $$;

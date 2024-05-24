@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"path"
 	"strconv"
-	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/jackc/pgconn"
 )
@@ -85,14 +86,24 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (string, error) {
 	// calendar_folder_id тот, для которого calendar_folder.name = eventType
 	q := `
-		CALL create_or_update_calendar_file($1, $2, $3, $4)
+		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7)
 	`
-	fmt.Println(object.Data.Events())
-	t, err := time.Parse(time.RFC3339Nano, object.ETag)
-	if err != nil {
-		return "", err
+
+	ifNoneMatch := opts.IfNoneMatch.IsWildcard()
+	ifMatch := opts.IfMatch.IsSet()
+
+	var (
+		want string
+		err  error
+	)
+	if ifMatch {
+		want, err = opts.IfMatch.ETag()
+		if err != nil {
+			return "", webdav.NewHTTPError(http.StatusBadRequest, err)
+		}
 	}
-	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, t, object.ModTime)
+
+	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, object.ETag, want, object.ModTime, ifNoneMatch, ifMatch)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
