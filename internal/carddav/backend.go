@@ -13,12 +13,16 @@ import (
 )
 
 type Backend struct {
-	repo Repository
+	webdav.UserPrincipalBackend
+	Prefix string
+	repo   Repository
 }
 
-func New(repository Repository) (*Backend, error) {
+func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*Backend, error) {
 	return &Backend{
-		repo: repository,
+		UserPrincipalBackend: upBackend,
+		Prefix:               prefix,
+		repo:                 repository,
 	}, nil
 }
 
@@ -39,23 +43,27 @@ END:VCARD`
 	//	addressBookPathKey      = contextKey("test:addressBookPath")
 )
 
-func (*Backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
-	return "/admin/", nil
+func (b *Backend) AddressbookHomeSetPath(ctx context.Context) (string, error) {
+	upPath, err := b.CurrentUserPrincipal(ctx)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(upPath, b.Prefix) + "/", nil
 }
 
-func (*Backend) AddressbookHomeSetPath(ctx context.Context) (string, error) {
-	return "/admin/contacts/", nil
-}
-
-func (*Backend) AddressBook(ctx context.Context) (*carddav.AddressBook, error) {
+func (b *Backend) AddressBook(ctx context.Context) (*carddav.AddressBook, error) {
 	datatype := make([]carddav.AddressDataType, 0)
 	datatype = append(datatype, carddav.AddressDataType{
 		ContentType: "text/vcard",
 		Version:     "3.0",
 	})
 	//p := ctx.Value(addressBookPathKey).(string)
+	homeSetPath, err := b.AddressbookHomeSetPath(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &carddav.AddressBook{
-		Path:                 path.Join("admin", "contacts", strconv.Itoa(1)),
+		Path:                 path.Join(homeSetPath, strconv.Itoa(1)),
 		Name:                 "My contacts",
 		Description:          "Default address book",
 		MaxResourceSize:      1024,

@@ -17,7 +17,7 @@ func NewBackends(upBackend webdav.UserPrincipalBackend, caldavPrefix, carddavPre
 	if err != nil {
 		return nil, nil, err
 	}
-	cardBackend, err := carddavBackend.New(carddav_db.NewRepository(pg, logger))
+	cardBackend, err := carddavBackend.New(upBackend, carddavPrefix, carddav_db.NewRepository(pg, logger))
 	if err != nil {
 		return nil, nil, err
 	}
