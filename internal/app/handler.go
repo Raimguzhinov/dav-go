@@ -47,12 +47,12 @@ func (d *davHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if d.carddavBackend != nil {
-		//path, err := d.carddavBackend.AddressbookHomeSetPath(r.Context())
-		//if err != nil {
-		//	http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		//} else {
-		//	homeSets = append(homeSets, carddav.NewAddressBookHomeSet(path))
-		//}
+		path, err := d.carddavBackend.AddressbookHomeSetPath(r.Context())
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		} else {
+			homeSets = append(homeSets, carddav.NewAddressBookHomeSet(path))
+		}
 	}
 
 	if userPrincipalPath != "" {

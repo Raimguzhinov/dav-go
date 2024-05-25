@@ -4,6 +4,7 @@ import (
 	caldavBackend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/internal/caldav/db"
 	carddavBackend "github.com/Raimguhinov/dav-go/internal/carddav"
+	"github.com/Raimguhinov/dav-go/internal/carddav/db"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/emersion/go-webdav"
@@ -16,7 +17,7 @@ func NewBackends(upBackend webdav.UserPrincipalBackend, caldavPrefix, carddavPre
 	if err != nil {
 		return nil, nil, err
 	}
-	cardBackend, err := carddavBackend.New()
+	cardBackend, err := carddavBackend.New(carddav_db.NewRepository(pg, logger))
 	if err != nil {
 		return nil, nil, err
 	}
