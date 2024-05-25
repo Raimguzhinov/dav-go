@@ -71,3 +71,15 @@ func (d *davHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 }
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Authorization")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
