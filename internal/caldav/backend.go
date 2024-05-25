@@ -4,13 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha1"
-	"encoding/base64"
 	"fmt"
-	"io"
 	"path"
 	"time"
 
+	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
@@ -117,7 +115,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calenda
 	}
 
 	size := int64(buf.Len())
-	etag, err := EtagForData(buf.Bytes())
+	eTag, err := etag.FromData(buf.Bytes())
 	if err != nil {
 		return "", err
 	}
@@ -126,19 +124,10 @@ func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calenda
 		Path:          objPath,
 		ContentLength: size,
 		Data:          calendar,
-		ETag:          etag,
+		ETag:          eTag,
 		ModTime:       time.Now().UTC(),
 	}
 	return b.repo.PutObject(ctx, uid, eventType, &object, opts)
-}
-
-func EtagForData(data []byte) (string, error) {
-	h := sha1.New()
-	if _, err := io.Copy(h, bytes.NewReader(data)); err != nil {
-		return "", err
-	}
-	csum := h.Sum(nil)
-	return base64.StdEncoding.EncodeToString(csum[:]), nil
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
