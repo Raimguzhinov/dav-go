@@ -67,8 +67,8 @@ func Run(cfg *configs.Config) {
 	}
 
 	s.Mount("/", &handler)
-	//s.Mount("/.well-known/caldav", &caldavHandler)
-	//s.Mount("/.well-known/carddav", &carddavHandler)
+	s.Mount("/.well-known/caldav", &caldavHandler)
+	s.Mount("/.well-known/carddav", &carddavHandler)
 	s.Mount("/{user}/contacts", &carddavHandler)
 	s.Mount("/{user}/calendars", &caldavHandler)
 

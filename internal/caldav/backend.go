@@ -12,16 +12,21 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 )
 
 type Backend struct {
-	repo Repository
+	webdav.UserPrincipalBackend
+	Prefix string
+	repo   Repository
 }
 
-func New(repository Repository) (*Backend, error) {
+func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*Backend, error) {
 	b := &Backend{
-		repo: repository,
+		UserPrincipalBackend: upBackend,
+		Prefix:               prefix,
+		repo:                 repository,
 	}
 
 	//if err := b.repo.CreateFolder(
@@ -34,7 +39,19 @@ func New(repository Repository) (*Backend, error) {
 }
 
 func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
-	return b.repo.FindFolders(ctx)
+	cals, err := b.repo.FindFolders(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, cal := range cals {
+		homeSetPath, err := b.CalendarHomeSetPath(ctx)
+		if err != nil {
+			return make([]caldav.Calendar, 0), err
+		}
+		cals[i].Path = path.Join(homeSetPath, cal.Path)
+	}
+	return cals, nil
 }
 
 func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
@@ -52,11 +69,12 @@ func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 }
 
 func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
-	return "/admin/calendars/", nil
-}
+	upPath, err := b.CurrentUserPrincipal(ctx)
+	if err != nil {
+		return "", err
+	}
 
-func (b *Backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
-	return "/admin/", nil
+	return path.Join(upPath, b.Prefix) + "/", nil
 }
 
 func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {

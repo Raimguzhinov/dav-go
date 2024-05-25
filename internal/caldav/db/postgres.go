@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"strconv"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
@@ -75,7 +74,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		if err != nil {
 			return nil, err
 		}
-		calendar.Path = path.Join("admin", "calendars", strconv.Itoa(f.ID))
+		calendar.Path = strconv.Itoa(f.ID)
 		calendar.SupportedComponentSet = append(calendar.SupportedComponentSet, f.Type)
 
 		calendars = append(calendars, calendar)

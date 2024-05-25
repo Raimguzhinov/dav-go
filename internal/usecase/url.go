@@ -40,7 +40,7 @@ func NewFromURL(usecaseUrl *UsecaseUrl, provider any, logger *logger.Logger) (ca
 		if !ok {
 			return nil, nil, fmt.Errorf("postgres provider not supported")
 		}
-		return repo.NewBackends(pg, logger)
+		return repo.NewBackends(usecaseUrl.upBackend, usecaseUrl.caldavPrefix, usecaseUrl.carddavPrefix, pg, logger)
 	default:
 		return nil, nil, fmt.Errorf("no storage provider found for %s:// URL", u.Scheme)
 	}
