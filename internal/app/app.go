@@ -36,12 +36,14 @@ func Run(cfg *configs.Config) {
 		"MKCOL",
 		"COPY",
 		"MOVE",
+		"OPTIONS",
 	} {
 		chi.RegisterMethod(method)
 	}
 
 	s := chi.NewRouter()
 	s.Use(middleware.Logger)
+	s.Use(corsMiddleware)
 
 	//authProvider, err := auth.NewFromURL(authURL)
 	//if err != nil {

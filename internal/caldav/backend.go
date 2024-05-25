@@ -27,8 +27,13 @@ func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Reposi
 		repo:                 repository,
 	}
 
+	//homeSetPath, err := b.CalendarHomeSetPath(context.Background())
+	//if err != nil {
+	//	return nil, err
+	//}
 	//if err := b.repo.CreateFolder(
 	//	context.Background(),
+	//	homeSetPath,
 	//	&caldav.Calendar{Name: "Calendar", SupportedComponentSet: []string{"VEVENT", "VTODO"}},
 	//); err != nil {
 	//	return nil, err

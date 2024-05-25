@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
@@ -32,7 +33,7 @@ type folder struct {
 	Type string `json:"type"`
 }
 
-func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar) error {
+func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
 	var f folder
 	q := `
 		INSERT INTO caldav.calendar_folder (name, type, description)
@@ -49,7 +50,7 @@ func (r *repository) CreateFolder(ctx context.Context, calendar *caldav.Calendar
 			return err
 		}
 	}
-	calendar.Path = "admin" + "/calendars/" + strconv.Itoa(f.ID) + "/"
+	calendar.Path = path.Join(homeSetPath, strconv.Itoa(f.ID))
 	return nil
 }
 
