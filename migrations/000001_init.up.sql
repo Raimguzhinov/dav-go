@@ -166,17 +166,17 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder_property
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_folder_id BIGINT               NOT NULL,
-    name               VARCHAR(255)         NOT NULL,
-    namespace          caldav.calendar_type NOT NULL,
-    prop_value         TEXT                 NOT NULL,
+    calendar_folder_id BIGINT                 NOT NULL,
+    name               VARCHAR(255)           NOT NULL,
+    namespace          caldav.calendar_type[] NOT NULL,
+    prop_value         TEXT                   NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
 CREATE OR REPLACE FUNCTION caldav.create_calendar_folder(
     IN p_name VARCHAR,
     IN p_types caldav.calendar_type[],
-    IN p_description TEXT DEFAULT '',
+    IN p_description TEXT DEFAULT NULL,
     IN p_max_resource_size INT DEFAULT 4096
 )
     RETURNS BIGINT
@@ -190,19 +190,14 @@ BEGIN
     VALUES (p_name, p_description)
     RETURNING id INTO v_folder_id;
 
-    FOR i IN 1..array_length(p_types, 1)
-        LOOP
-            INSERT INTO caldav.calendar_folder_property (calendar_folder_id, name, namespace, prop_value)
-            VALUES (v_folder_id, 'MaxResourceSize', p_types[i], p_max_resource_size::TEXT);
-
-            RAISE NOTICE 'Property created for % with MaxResourceSize set to %.', p_types[i], p_max_resource_size;
-        END LOOP;
+    INSERT INTO caldav.calendar_folder_property (calendar_folder_id, name, namespace, prop_value)
+    VALUES (v_folder_id, 'MaxResourceSize', p_types, p_max_resource_size::TEXT);
 
     RETURN v_folder_id;
 END;
 $$;
 
-SELECT caldav.create_calendar_folder('My Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
+SELECT caldav.create_calendar_folder('Default Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
 
 CREATE TABLE IF NOT EXISTS caldav.access
 (
@@ -357,17 +352,15 @@ DECLARE
     v_current_etag      VARCHAR(40);
 BEGIN
     -- Получаем ID папки календаря по типу
-    WITH supported_folder_ids AS (SELECT f.id,
-                                         array_agg(p.namespace) AS namespaces
-                                  FROM caldav.calendar_folder f
-                                           JOIN
-                                       caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
-                                  WHERE f.id = p_calendar_folder_id
-                                  GROUP BY f.id)
-    SELECT id
-    INTO v_support_folder_id
-    FROM supported_folder_ids
-    WHERE p_calendar_folder_type = ANY (namespaces);
+    SELECT
+        f.id
+    INTO
+        v_support_folder_id
+    FROM
+        caldav.calendar_folder f
+            JOIN
+        caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
+    WHERE f.id = p_calendar_folder_id AND p_calendar_folder_type = ANY(p.namespace);
 
     -- Проверяем, поддерживает ли папка данный тип
     IF v_support_folder_id IS DISTINCT FROM p_calendar_folder_id THEN
@@ -375,8 +368,10 @@ BEGIN
     END IF;
 
     -- Проверяем, существует ли запись в таблице calendar_file
-    SELECT etag
-    INTO v_current_etag
+    SELECT
+        etag
+    INTO
+        v_current_etag
     FROM caldav.calendar_file
     WHERE uid = p_calendar_uid;
 
@@ -392,8 +387,10 @@ BEGIN
         END IF;
 
         -- Обновляем запись
-        UPDATE caldav.calendar_file
-        SET etag        = p_etag,
+        UPDATE
+            caldav.calendar_file
+        SET
+            etag        = p_etag,
             modified_at = p_modified_at
         WHERE uid = p_calendar_uid;
     ELSE

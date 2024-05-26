@@ -106,7 +106,7 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 	//		}
 	//	}
 	//}
-	return nil, fmt.Errorf("couldn't find calendar object at: %b", path)
+	return nil, fmt.Errorf("couldn't find calendar object at: %s", path)
 }
 
 func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {

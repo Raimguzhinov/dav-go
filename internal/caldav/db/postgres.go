@@ -57,7 +57,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		SELECT
 			f.id,
 			f.name,
-			f.description,
+    		COALESCE(f.description, '') as description,
 			array_agg(p.namespace) AS types,
 			max(CASE WHEN p.name = 'MaxResourceSize' THEN p.prop_value END) AS size
 		FROM
