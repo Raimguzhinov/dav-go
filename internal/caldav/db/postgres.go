@@ -2,7 +2,6 @@ package caldav_db
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -82,17 +81,19 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 
 	for rows.Next() {
 		var calendar caldav.Calendar
-		var maxResourceSize sql.NullString
+		var maxResourceSize string
 
 		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &maxResourceSize)
 		if err != nil {
 			return nil, err
 		}
 
-		if maxResourceSize.Valid {
-			if size, err := strconv.Atoi(maxResourceSize.String); err == nil {
-				calendar.MaxResourceSize = int64(size)
+		if maxResourceSize != "" {
+			size, err := strconv.Atoi(maxResourceSize)
+			if err != nil {
+				return nil, err
 			}
+			calendar.MaxResourceSize = int64(size)
 		}
 
 		calendar.Path = strconv.Itoa(f.ID)
