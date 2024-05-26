@@ -66,18 +66,22 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 	return cals, nil
 }
 
-func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
+func (b *Backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
 	cals, err := b.repo.FindFolders(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, cal := range cals {
-		if cal.Path == path {
+		homeSetPath, err := b.CalendarHomeSetPath(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if path.Join(homeSetPath, cal.Path)+"/" == urlPath {
 			return &cal, nil
 		}
 	}
-	return nil, fmt.Errorf("calendar for path: %s not found", path)
+	return nil, fmt.Errorf("calendar for path: %s not found", urlPath)
 }
 
 func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
