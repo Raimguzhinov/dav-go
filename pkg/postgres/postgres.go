@@ -3,11 +3,15 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -77,4 +81,47 @@ func (p *Postgres) Close() {
 	if p.Pool != nil {
 		p.Pool.Close()
 	}
+}
+
+func (p *Postgres) ToPgErr(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState())
+	}
+	return err
+}
+
+type Tx struct {
+	tx pgx.Tx
+	mu sync.Mutex
+}
+
+func (p *Postgres) NewTx(ctx context.Context) (*Tx, error) {
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Tx{tx: tx}, nil
+}
+
+func (ct *Tx) Rollback(ctx context.Context) error {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.Rollback(ctx)
+}
+
+func (ct *Tx) Commit(ctx context.Context) error {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.Commit(ctx)
+}
+
+func (ct *Tx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.QueryRow(ctx, sql, args...)
 }

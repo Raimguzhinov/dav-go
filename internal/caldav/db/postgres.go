@@ -2,18 +2,19 @@ package caldav_db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"path"
 	"strconv"
+	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
-	"github.com/jackc/pgconn"
+	"golang.org/x/sync/errgroup"
 )
 
 type repository struct {
@@ -34,20 +35,18 @@ type folder struct {
 }
 
 func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
-	var f folder
 	q := `
 		SELECT caldav.create_calendar_folder($1, $2, $3, $4)
 	`
-	//for _, calendarType := range calendar.SupportedComponentSet {
 	r.logger.Debug(q)
+
+	var f folder
+
 	if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendar.SupportedComponentSet, calendar.Description, calendar.MaxResourceSize).Scan(&f.ID); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
-		}
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
 		return err
 	}
-	//}
 	calendar.Path = path.Join(homeSetPath, strconv.Itoa(f.ID))
 	return nil
 }
@@ -73,6 +72,8 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 
 	rows, err := r.client.Pool.Query(ctx, q)
 	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
 		return nil, err
 	}
 
@@ -85,6 +86,8 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 
 		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &maxResourceSize)
 		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error(err)
 			return nil, err
 		}
 
@@ -105,9 +108,8 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 }
 
 func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (string, error) {
-	// calendar_folder_id тот, для которого calendar_folder.name = eventType
 	q := `
-		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8)
+		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	r.logger.Debug(q)
 
@@ -126,13 +128,96 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	}
 	folderDir, _ := path.Split(object.Path)
 	folderID := path.Base(folderDir)
-
-	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, folderID, object.ETag, want, object.ModTime, ifNoneMatch, ifMatch)
+	version, err := object.Data.Component.Props.Text(ical.PropVersion)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
-		}
+		return "", err
+	}
+	prodID, err := object.Data.Component.Props.Text(ical.PropProductID)
+	if err != nil {
+		return "", err
+	}
+
+	tx, err := r.client.NewTx(ctx)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = r.client.Pool.Exec(
+		ctx, q, uid, eventType, folderID, object.ETag, want, object.ModTime, version, prodID, ifNoneMatch, ifMatch,
+	)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return "", err
+	}
+
+	sq := `
+		INSERT INTO caldav.event_component
+		(
+			calendar_file_uid, 
+			component_type,
+			date_timestamp
+		) VALUES ($1, $2, $3)
+	`
+	//-- 			created_at,
+	//-- 			last_modified_at,
+	//-- 			summary,
+	//-- 			description,
+	//-- 			organizer_email,
+	//-- 			organizer_common_name,
+	//-- 			start_date,
+	//-- 			start_timezone_id,
+	//-- 			end_date,
+	//-- 			end_timezone_id,
+	//-- 			duration,
+	//-- 			all_day,
+	//-- 			class,
+	//-- 			location,
+	//-- 			priority,
+	//-- 			sequence,
+	//-- 			status,
+	//-- 			categories,
+	//-- 			event_transparency,
+	//-- 			todo_completed,
+	//-- 			todo_percent_complete
+	//--, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+	r.logger.Info(sq)
+
+	eg := errgroup.Group{}
+	for _, event := range object.Data.Component.Children {
+		eg.Go(func() error {
+			var compTypeBit string
+
+			if event.Name == ical.CompEvent {
+				compTypeBit = "1"
+			} else if event.Name == ical.CompToDo {
+				compTypeBit = "0"
+			} else {
+				return fmt.Errorf("unknown event: %s", event.Name)
+			}
+
+			_, err = r.client.Pool.Exec(
+				ctx, sq, uid, compTypeBit, time.Now().UTC(),
+			)
+			if err != nil {
+				err = r.client.ToPgErr(err)
+				r.logger.Error(err)
+				return err
+			}
+			return nil
+		})
+	}
+
+	if err = eg.Wait(); err != nil {
+		return "", err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
 		return "", err
 	}
 	return object.Path, nil

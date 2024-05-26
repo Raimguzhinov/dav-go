@@ -220,6 +220,17 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_file
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
+CREATE TABLE IF NOT EXISTS caldav.calendar_property
+(
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    calendar_file_uid UUID         NOT NULL,
+    version           VARCHAR(5)   NOT NULL,
+    product           VARCHAR(100) NOT NULL,
+    scale             VARCHAR(30),
+    method            VARCHAR(30),
+    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
+);
+
 CREATE TABLE IF NOT EXISTS caldav.custom_property
 (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -342,8 +353,12 @@ CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(
     IN p_etag VARCHAR(40),
     IN p_want_etag VARCHAR(40),
     IN p_modified_at TIMESTAMP,
+    IN p_version VARCHAR(5),
+    IN p_product VARCHAR(100),
     IN p_if_none_match BOOLEAN DEFAULT FALSE,
-    IN p_if_match BOOLEAN DEFAULT FALSE
+    IN p_if_match BOOLEAN DEFAULT FALSE,
+    IN p_scale VARCHAR(30) DEFAULT 'GREGORIAN',
+    IN p_method VARCHAR(30) DEFAULT NULL
 )
     LANGUAGE plpgsql AS
 $$
@@ -352,15 +367,14 @@ DECLARE
     v_current_etag      VARCHAR(40);
 BEGIN
     -- Получаем ID папки календаря по типу
-    SELECT
-        f.id
+    SELECT f.id
     INTO
         v_support_folder_id
-    FROM
-        caldav.calendar_folder f
-            JOIN
-        caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
-    WHERE f.id = p_calendar_folder_id AND p_calendar_folder_type = ANY(p.namespace);
+    FROM caldav.calendar_folder f
+             JOIN
+         caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
+    WHERE f.id = p_calendar_folder_id
+      AND p_calendar_folder_type = ANY (p.namespace);
 
     -- Проверяем, поддерживает ли папка данный тип
     IF v_support_folder_id IS DISTINCT FROM p_calendar_folder_id THEN
@@ -368,8 +382,7 @@ BEGIN
     END IF;
 
     -- Проверяем, существует ли запись в таблице calendar_file
-    SELECT
-        etag
+    SELECT etag
     INTO
         v_current_etag
     FROM caldav.calendar_file
@@ -389,8 +402,7 @@ BEGIN
         -- Обновляем запись
         UPDATE
             caldav.calendar_file
-        SET
-            etag        = p_etag,
+        SET etag        = p_etag,
             modified_at = p_modified_at
         WHERE uid = p_calendar_uid;
     ELSE
@@ -402,6 +414,9 @@ BEGIN
         -- Вставляем новую запись
         INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at)
         VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, now()::timestamp, now()::timestamp);
+
+        INSERT INTO caldav.calendar_property (calendar_file_uid, version, product, scale, method)
+        VALUES (p_calendar_uid, p_version, p_product, p_scale, p_method);
     END IF;
 END;
 $$;
