@@ -26,19 +26,28 @@ func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Reposi
 		Prefix:               prefix,
 		repo:                 repository,
 	}
-
-	//homeSetPath, err := b.CalendarHomeSetPath(context.Background())
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if err := b.repo.CreateFolder(
-	//	context.Background(),
-	//	homeSetPath,
-	//	&caldav.Calendar{Name: "Calendar", SupportedComponentSet: []string{"VEVENT", "VTODO"}},
-	//); err != nil {
-	//	return nil, err
-	//}
+	//_ = b.createDefaultCalendar(context.Background())
 	return b, nil
+}
+
+func (b *Backend) createDefaultCalendar(ctx context.Context) error {
+	homeSetPath, err := b.CalendarHomeSetPath(ctx)
+	if err != nil {
+		return err
+	}
+	if err := b.repo.CreateFolder(
+		ctx,
+		homeSetPath,
+		&caldav.Calendar{
+			Name:                  "Alien",
+			Description:           "Test",
+			MaxResourceSize:       4096,
+			SupportedComponentSet: []string{"VEVENT", "VTODO"},
+		},
+	); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
@@ -52,7 +61,7 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 		if err != nil {
 			return make([]caldav.Calendar, 0), err
 		}
-		cals[i].Path = path.Join(homeSetPath, cal.Path)
+		cals[i].Path = path.Join(homeSetPath, cal.Path) + "/"
 	}
 	return cals, nil
 }
@@ -136,7 +145,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calenda
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	return nil, nil
+	return nil, nil //b.objectMap[path], nil
 }
 
 func (b *Backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {

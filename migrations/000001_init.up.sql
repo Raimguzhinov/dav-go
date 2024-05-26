@@ -159,27 +159,50 @@ CREATE TYPE caldav.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(50)          NOT NULL,
-    type        caldav.calendar_type NOT NULL,
+    name        VARCHAR(50) NOT NULL,
     description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder_property
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_folder_id BIGINT       NOT NULL,
-    name               VARCHAR(255) NOT NULL,
-    namespace          VARCHAR(100) NOT NULL,
-    prop_value         TEXT         NOT NULL,
+    calendar_folder_id BIGINT               NOT NULL,
+    name               VARCHAR(255)         NOT NULL,
+    namespace          caldav.calendar_type NOT NULL,
+    prop_value         TEXT                 NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
-INSERT INTO caldav.calendar_folder (name, type)
-VALUES ('calendars', 'VEVENT');
-INSERT INTO caldav.calendar_folder (name, type)
-VALUES ('todos', 'VTODO');
-INSERT INTO caldav.calendar_folder (name, type)
-VALUES ('journals', 'VJOURNAL');
+CREATE OR REPLACE FUNCTION caldav.create_calendar_folder(
+    IN p_name VARCHAR,
+    IN p_types caldav.calendar_type[],
+    IN p_description TEXT DEFAULT '',
+    IN p_max_resource_size INT DEFAULT 4096
+)
+    RETURNS BIGINT
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    v_folder_id BIGINT;
+BEGIN
+    INSERT INTO caldav.calendar_folder (name, description)
+    VALUES (p_name, p_description)
+    RETURNING id INTO v_folder_id;
+
+    FOR i IN 1..array_length(p_types, 1)
+        LOOP
+            INSERT INTO caldav.calendar_folder_property (calendar_folder_id, name, namespace, prop_value)
+            VALUES (v_folder_id, 'MaxResourceSize', p_types[i], p_max_resource_size::TEXT);
+
+            RAISE NOTICE 'Property created for % with MaxResourceSize set to %.', p_types[i], p_max_resource_size;
+        END LOOP;
+
+    RETURN v_folder_id;
+END;
+$$;
+
+SELECT caldav.create_calendar_folder('My Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
 
 CREATE TABLE IF NOT EXISTS caldav.access
 (
@@ -318,57 +341,70 @@ CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 );
 
 CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(
-    IN _calendar_uid UUID,
-    IN _calendar_folder_type caldav.calendar_type,
-    IN _etag VARCHAR(40),
-    IN _want_etag VARCHAR(40),
-    IN _modified_at TIMESTAMP,
-    IN _if_none_match BOOLEAN DEFAULT FALSE,
-    IN _if_match BOOLEAN DEFAULT FALSE
+    IN p_calendar_uid UUID,
+    IN p_calendar_folder_type caldav.calendar_type,
+    IN p_calendar_folder_id BIGINT,
+    IN p_etag VARCHAR(40),
+    IN p_want_etag VARCHAR(40),
+    IN p_modified_at TIMESTAMP,
+    IN p_if_none_match BOOLEAN DEFAULT FALSE,
+    IN p_if_match BOOLEAN DEFAULT FALSE
 )
     LANGUAGE plpgsql AS
 $$
 DECLARE
-    _calendar_folder_id BIGINT;
-    _current_etag       VARCHAR(40);
+    v_support_folder_id BIGINT;
+    v_current_etag      VARCHAR(40);
 BEGIN
     -- Получаем ID папки календаря по типу
+    WITH supported_folder_ids AS (SELECT f.id,
+                                         array_agg(p.namespace) AS namespaces
+                                  FROM caldav.calendar_folder f
+                                           JOIN
+                                       caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
+                                  WHERE f.id = p_calendar_folder_id
+                                  GROUP BY f.id)
     SELECT id
-    INTO _calendar_folder_id
-    FROM caldav.calendar_folder
-    WHERE type = _calendar_folder_type;
+    INTO v_support_folder_id
+    FROM supported_folder_ids
+    WHERE p_calendar_folder_type = ANY (namespaces);
+
+    -- Проверяем, поддерживает ли папка данный тип
+    IF v_support_folder_id IS DISTINCT FROM p_calendar_folder_id THEN
+        RAISE EXCEPTION 'Invalid folder type provided for folder: %', p_calendar_folder_id;
+    END IF;
 
     -- Проверяем, существует ли запись в таблице calendar_file
     SELECT etag
-    INTO _current_etag
+    INTO v_current_etag
     FROM caldav.calendar_file
-    WHERE uid = _calendar_uid;
+    WHERE uid = p_calendar_uid;
 
     IF FOUND THEN
         -- Если запись существует и установлен If-None-Match, то возвращаем ошибку
-        IF _if_none_match THEN
+        IF p_if_none_match THEN
             RAISE EXCEPTION 'Precondition failed: If-None-Match header is set and resource exists';
         END IF;
 
         -- Если запись существует и установлен If-Match, проверяем ETag
-        IF _if_match AND _current_etag IS DISTINCT FROM _want_etag THEN
+        IF p_if_match AND v_current_etag IS DISTINCT FROM p_want_etag THEN
             RAISE EXCEPTION 'Precondition failed: If-Match header is set and ETag does not match';
         END IF;
 
         -- Обновляем запись
         UPDATE caldav.calendar_file
-        SET etag        = _etag,
-            modified_at = _modified_at
-        WHERE uid = _calendar_uid;
+        SET etag        = p_etag,
+            modified_at = p_modified_at
+        WHERE uid = p_calendar_uid;
     ELSE
         -- Если запись не существует и установлен If-Match, то возвращаем ошибку
-        IF _if_match THEN
+        IF p_if_match THEN
             RAISE EXCEPTION 'Precondition failed: If-Match header is set and resource does not exist';
         END IF;
 
         -- Вставляем новую запись
         INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at)
-        VALUES (_calendar_uid, _calendar_folder_id, _etag, now()::timestamp, now()::timestamp);
+        VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, now()::timestamp, now()::timestamp);
     END IF;
 END;
 $$;

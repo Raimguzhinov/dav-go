@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -53,7 +53,7 @@ func New(ctx context.Context, url string, opts ...Option) (*Postgres, error) {
 		ctx, cancel := context.WithTimeout(ctx, pg.connTimeout)
 		defer cancel()
 
-		pg.Pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
+		pg.Pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 		if err == nil {
 			break
 		}

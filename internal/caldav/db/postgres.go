@@ -2,6 +2,7 @@ package caldav_db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -29,35 +30,46 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 }
 
 type folder struct {
-	ID   int    `json:"id"`
-	Type string `json:"type"`
+	ID    int      `json:"id"`
+	Types []string `json:"types"`
 }
 
 func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
 	var f folder
 	q := `
-		INSERT INTO caldav.calendar_folder (name, type, description)
-		VALUES ($1, $2, $3)
-		RETURNING id
+		SELECT caldav.create_calendar_folder($1, $2, $3, $4)
 	`
-	for _, calendarType := range calendar.SupportedComponentSet {
-		r.logger.Debug(q)
-		if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendarType, calendar.Description).Scan(&f.ID); err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) {
-				r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
-			}
-			return err
+	//for _, calendarType := range calendar.SupportedComponentSet {
+	r.logger.Debug(q)
+	if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendar.SupportedComponentSet, calendar.Description, calendar.MaxResourceSize).Scan(&f.ID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			r.logger.Error(fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
 		}
+		return err
 	}
+	//}
 	calendar.Path = path.Join(homeSetPath, strconv.Itoa(f.ID))
 	return nil
 }
 
 func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error) {
 	q := `
-		SELECT id, name, type, COALESCE(description, '') as description FROM caldav.calendar_folder
-	`
+		SELECT
+			f.id,
+			f.name,
+			f.description,
+			array_agg(p.namespace) AS types,
+			max(CASE WHEN p.name = 'MaxResourceSize' THEN p.prop_value END) AS size
+		FROM
+			caldav.calendar_folder f
+				JOIN
+			caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
+		GROUP BY
+			f.id, f.name, f.description
+		ORDER BY
+			f.id; 
+		`
 	r.logger.Debug(q)
 
 	rows, err := r.client.Pool.Query(ctx, q)
@@ -70,13 +82,21 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 
 	for rows.Next() {
 		var calendar caldav.Calendar
+		var maxResourceSize sql.NullString
 
-		err = rows.Scan(&f.ID, &calendar.Name, &f.Type, &calendar.Description)
+		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &maxResourceSize)
 		if err != nil {
 			return nil, err
 		}
+
+		if maxResourceSize.Valid {
+			if size, err := strconv.Atoi(maxResourceSize.String); err == nil {
+				calendar.MaxResourceSize = int64(size)
+			}
+		}
+
 		calendar.Path = strconv.Itoa(f.ID)
-		calendar.SupportedComponentSet = append(calendar.SupportedComponentSet, f.Type)
+		calendar.SupportedComponentSet = f.Types
 
 		calendars = append(calendars, calendar)
 	}
@@ -86,8 +106,9 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (string, error) {
 	// calendar_folder_id тот, для которого calendar_folder.name = eventType
 	q := `
-		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7)
+		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8)
 	`
+	r.logger.Debug(q)
 
 	ifNoneMatch := opts.IfNoneMatch.IsWildcard()
 	ifMatch := opts.IfMatch.IsSet()
@@ -102,8 +123,10 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 			return "", webdav.NewHTTPError(http.StatusBadRequest, err)
 		}
 	}
+	folderDir, _ := path.Split(object.Path)
+	folderID := path.Base(folderDir)
 
-	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, object.ETag, want, object.ModTime, ifNoneMatch, ifMatch)
+	_, err = r.client.Pool.Exec(ctx, q, uid, eventType, folderID, object.ETag, want, object.ModTime, ifNoneMatch, ifMatch)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
