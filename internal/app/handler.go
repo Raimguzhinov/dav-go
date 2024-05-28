@@ -47,7 +47,7 @@ func (d *davHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if d.carddavBackend != nil {
-		path, err := d.carddavBackend.AddressbookHomeSetPath(r.Context())
+		path, err := d.carddavBackend.AddressBookHomeSetPath(r.Context())
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		} else {
