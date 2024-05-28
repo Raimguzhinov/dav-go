@@ -146,7 +146,18 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	defer tx.Rollback(ctx)
 
 	_, err = r.client.Pool.Exec(
-		ctx, q, uid, eventType, folderID, object.ETag, want, object.ModTime, version, prodID, ifNoneMatch, ifMatch,
+		ctx,
+		q,
+		uid,
+		eventType,
+		folderID,
+		object.ETag,
+		want,
+		object.ModTime,
+		version,
+		prodID,
+		ifNoneMatch,
+		ifMatch,
 	)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -189,25 +200,7 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	eg := errgroup.Group{}
 	for _, event := range object.Data.Component.Children {
 		eg.Go(func() error {
-			var compTypeBit string
-
-			if event.Name == ical.CompEvent {
-				compTypeBit = "1"
-			} else if event.Name == ical.CompToDo {
-				compTypeBit = "0"
-			} else {
-				return fmt.Errorf("unknown event: %s", event.Name)
-			}
-
-			_, err = r.client.Pool.Exec(
-				ctx, sq, uid, compTypeBit, time.Now().UTC(),
-			)
-			if err != nil {
-				err = r.client.ToPgErr(err)
-				r.logger.Error(err)
-				return err
-			}
-			return nil
+			return r.CreateEvent(ctx, sq, uid, event)
 		})
 	}
 
@@ -223,6 +216,25 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	return object.Path, nil
 }
 
-func (r *repository) CreateEvent(ctx context.Context, calendar *caldav.Calendar) error {
+func (r *repository) CreateEvent(ctx context.Context, query, uid string, event *ical.Component) error {
+	var compTypeBit string
+
+	switch event.Name {
+	case ical.CompEvent:
+		compTypeBit = "1"
+	case ical.CompToDo:
+		compTypeBit = "0"
+	default:
+		return fmt.Errorf("unknown event: %s", event.Name)
+	}
+
+	_, err := r.client.Pool.Exec(
+		ctx, query, uid, compTypeBit, time.Now().UTC(),
+	)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return err
+	}
 	return nil
 }
