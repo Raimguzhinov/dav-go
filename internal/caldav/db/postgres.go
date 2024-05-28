@@ -107,7 +107,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	return calendars, nil
 }
 
-func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (string, error) {
+func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
 	q := `
 		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
@@ -123,25 +123,25 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	if ifMatch {
 		want, err = opts.IfMatch.ETag()
 		if err != nil {
-			return "", webdav.NewHTTPError(http.StatusBadRequest, err)
+			return nil, webdav.NewHTTPError(http.StatusBadRequest, err)
 		}
 	}
 	folderDir, _ := path.Split(object.Path)
 	folderID := path.Base(folderDir)
 	version, err := object.Data.Component.Props.Text(ical.PropVersion)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	prodID, err := object.Data.Component.Props.Text(ical.PropProductID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	tx, err := r.client.NewTx(ctx)
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error(err)
-		return "", err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -162,7 +162,7 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error(err)
-		return "", err
+		return nil, err
 	}
 
 	sq := `
@@ -205,15 +205,15 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	}
 
 	if err = eg.Wait(); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error(err)
-		return "", err
+		return nil, err
 	}
-	return object.Path, nil
+	return object, nil
 }
 
 func (r *repository) CreateEvent(ctx context.Context, query, uid string, event *ical.Component) error {

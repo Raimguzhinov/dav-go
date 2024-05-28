@@ -30,21 +30,33 @@ func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Reposi
 	return b, nil
 }
 
-func (b *Backend) createDefaultCalendar(ctx context.Context) error {
+func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+	upPath, err := b.CurrentUserPrincipal(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(upPath, b.Prefix) + "/", nil
+}
+
+func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
 	homeSetPath, err := b.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return err
 	}
-	if err := b.repo.CreateFolder(
-		ctx,
-		homeSetPath,
-		&caldav.Calendar{
-			Name:                  "Alien",
-			Description:           "Test",
-			MaxResourceSize:       4096,
-			SupportedComponentSet: []string{"VEVENT", "VTODO"},
-		},
-	); err != nil {
+	if err := b.repo.CreateFolder(ctx, homeSetPath, calendar); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *Backend) createDefaultCalendar(ctx context.Context) error {
+	if err := b.CreateCalendar(ctx, &caldav.Calendar{
+		Name:                  "Alien",
+		Description:           "Test",
+		MaxResourceSize:       4096,
+		SupportedComponentSet: []string{"VEVENT", "VTODO"},
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -84,20 +96,6 @@ func (b *Backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Cale
 	return nil, fmt.Errorf("calendar for path: %s not found", urlPath)
 }
 
-func (b *Backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
-	upPath, err := b.CurrentUserPrincipal(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return path.Join(upPath, b.Prefix) + "/", nil
-}
-
-func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	//delete(b.objectMap, path)
-	return nil
-}
-
 func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
 	//for _, objs := range b.objectMap {
 	//	for _, obj := range objs {
@@ -109,10 +107,18 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 	return nil, fmt.Errorf("couldn't find calendar object at: %s", path)
 }
 
-func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (string, error) {
+func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	return nil, nil //b.objectMap[path], nil
+}
+
+func (b *Backend) QueryCalendarObjects(ctx context.Context, path string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+	return nil, nil
+}
+
+func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
 	eventType, uid, err := caldav.ValidateCalendarObject(calendar)
 	if err != nil {
-		return "", caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
+		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
 	}
 	// Object always get saved as <UID>.ics
 	dirname, _ := path.Split(objPath)
@@ -124,18 +130,18 @@ func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calenda
 	enc := ical.NewEncoder(f)
 	err = enc.Encode(calendar)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	err = f.Flush()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	size := int64(buf.Len())
 	eTag, err := etag.FromData(buf.Bytes())
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	object := caldav.CalendarObject{
@@ -148,10 +154,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calenda
 	return b.repo.PutObject(ctx, uid, eventType, &object, opts)
 }
 
-func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	return nil, nil //b.objectMap[path], nil
-}
-
-func (b *Backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
-	return nil, nil
+func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
+	//delete(b.objectMap, path)
+	return nil
 }

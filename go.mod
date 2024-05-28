@@ -4,9 +4,9 @@ go 1.22.2
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/emersion/go-ical v0.0.0-20220601085725-0864dccc089f
+	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
-	github.com/emersion/go-webdav v0.5.0
+	github.com/emersion/go-webdav v0.5.1-0.20240419143909-21f251fa1de2
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.6.0
