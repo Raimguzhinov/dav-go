@@ -86,7 +86,14 @@ func (p *Postgres) Close() {
 func (p *Postgres) ToPgErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		return fmt.Errorf("repo error: %s, detail: %s, where: %s, code: %s, state: %v", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState())
+		return fmt.Errorf(
+			"repo error: %s, detail: %s, where: %s, code: %s, state: %v",
+			pgErr.Message,
+			pgErr.Detail,
+			pgErr.Where,
+			pgErr.Code,
+			pgErr.SQLState(),
+		)
 	}
 	return err
 }
@@ -124,4 +131,11 @@ func (ct *Tx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx
 	defer ct.mu.Unlock()
 
 	return ct.tx.QueryRow(ctx, sql, args...)
+}
+
+func (ct *Tx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.Exec(ctx, sql, args...)
 }

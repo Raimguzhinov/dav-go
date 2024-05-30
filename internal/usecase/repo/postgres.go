@@ -12,12 +12,25 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 )
 
-func NewBackends(upBackend webdav.UserPrincipalBackend, caldavPrefix, carddavPrefix string, pg *postgres.Postgres, logger *logger.Logger) (caldav.Backend, carddav.Backend, error) {
-	calBackend, err := caldavBackend.New(upBackend, caldavPrefix, caldav_db.NewRepository(pg, logger))
+func NewBackends(
+	upBackend webdav.UserPrincipalBackend,
+	caldavPrefix, carddavPrefix string,
+	pg *postgres.Postgres,
+	logger *logger.Logger,
+) (caldav.Backend, carddav.Backend, error) {
+	calBackend, err := caldavBackend.New(
+		upBackend,
+		caldavPrefix,
+		caldav_db.NewRepository(pg, logger),
+	)
 	if err != nil {
 		return nil, nil, err
 	}
-	cardBackend, err := carddavBackend.New(upBackend, carddavPrefix, carddav_db.NewRepository(pg, logger))
+	cardBackend, err := carddavBackend.New(
+		upBackend,
+		carddavPrefix,
+		carddav_db.NewRepository(pg, logger),
+	)
 	if err != nil {
 		return nil, nil, err
 	}

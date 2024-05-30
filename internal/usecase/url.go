@@ -19,7 +19,10 @@ type UsecaseUrl struct {
 	upBackend     webdav.UserPrincipalBackend
 }
 
-func NewURL(storageURL, caldavPrefix, carddavPrefix string, upBackend webdav.UserPrincipalBackend) *UsecaseUrl {
+func NewURL(
+	storageURL, caldavPrefix, carddavPrefix string,
+	upBackend webdav.UserPrincipalBackend,
+) *UsecaseUrl {
 	return &UsecaseUrl{
 		storageURL:    storageURL,
 		caldavPrefix:  caldavPrefix,
@@ -28,7 +31,11 @@ func NewURL(storageURL, caldavPrefix, carddavPrefix string, upBackend webdav.Use
 	}
 }
 
-func NewFromURL(usecaseUrl *UsecaseUrl, provider any, logger *logger.Logger) (caldav.Backend, carddav.Backend, error) {
+func NewFromURL(
+	usecaseUrl *UsecaseUrl,
+	provider any,
+	logger *logger.Logger,
+) (caldav.Backend, carddav.Backend, error) {
 	u, err := url.Parse(usecaseUrl.storageURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing storage URL: %s", err.Error())
@@ -40,7 +47,13 @@ func NewFromURL(usecaseUrl *UsecaseUrl, provider any, logger *logger.Logger) (ca
 		if !ok {
 			return nil, nil, fmt.Errorf("postgres provider not supported")
 		}
-		return repo.NewBackends(usecaseUrl.upBackend, usecaseUrl.caldavPrefix, usecaseUrl.carddavPrefix, pg, logger)
+		return repo.NewBackends(
+			usecaseUrl.upBackend,
+			usecaseUrl.caldavPrefix,
+			usecaseUrl.carddavPrefix,
+			pg,
+			logger,
+		)
 	default:
 		return nil, nil, fmt.Errorf("no storage provider found for %s:// URL", u.Scheme)
 	}

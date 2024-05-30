@@ -20,7 +20,11 @@ type Backend struct {
 	repo   Repository
 }
 
-func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*Backend, error) {
+func New(
+	upBackend webdav.UserPrincipalBackend,
+	prefix string,
+	repository Repository,
+) (*Backend, error) {
 	b := &Backend{
 		UserPrincipalBackend: upBackend,
 		Prefix:               prefix,
@@ -96,7 +100,11 @@ func (b *Backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Cale
 	return nil, fmt.Errorf("calendar for path: %s not found", urlPath)
 }
 
-func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+func (b *Backend) GetCalendarObject(
+	ctx context.Context,
+	path string,
+	req *caldav.CalendarCompRequest,
+) (*caldav.CalendarObject, error) {
 	//for _, objs := range b.objectMap {
 	//	for _, obj := range objs {
 	//		if obj.Path == path {
@@ -107,15 +115,28 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 	return nil, fmt.Errorf("couldn't find calendar object at: %s", path)
 }
 
-func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+func (b *Backend) ListCalendarObjects(
+	ctx context.Context,
+	path string,
+	req *caldav.CalendarCompRequest,
+) ([]caldav.CalendarObject, error) {
 	return nil, nil //b.objectMap[path], nil
 }
 
-func (b *Backend) QueryCalendarObjects(ctx context.Context, path string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+func (b *Backend) QueryCalendarObjects(
+	ctx context.Context,
+	path string,
+	query *caldav.CalendarQuery,
+) ([]caldav.CalendarObject, error) {
 	return nil, nil
 }
 
-func (b *Backend) PutCalendarObject(ctx context.Context, objPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
+func (b *Backend) PutCalendarObject(
+	ctx context.Context,
+	objPath string,
+	calendar *ical.Calendar,
+	opts *caldav.PutCalendarObjectOptions,
+) (*caldav.CalendarObject, error) {
 	eventType, uid, err := caldav.ValidateCalendarObject(calendar)
 	if err != nil {
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)

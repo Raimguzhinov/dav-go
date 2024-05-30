@@ -160,44 +160,23 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name        VARCHAR(50) NOT NULL,
-    description TEXT
+    description TEXT                   DEFAULT NULL,
+    types       caldav.calendar_type[] DEFAULT ARRAY ['VEVENT']::caldav.calendar_type[],
+    max_size    INT                    DEFAULT 4096
 );
 
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder_property
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_folder_id BIGINT                 NOT NULL,
-    name               VARCHAR(255)           NOT NULL,
-    namespace          caldav.calendar_type[] NOT NULL,
-    prop_value         TEXT                   NOT NULL,
+    calendar_folder_id BIGINT       NOT NULL,
+    name               VARCHAR(255) NOT NULL,
+    namespace          VARCHAR(100) NOT NULL,
+    prop_value         TEXT         NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
-CREATE OR REPLACE FUNCTION caldav.create_calendar_folder(
-    IN p_name VARCHAR,
-    IN p_types caldav.calendar_type[],
-    IN p_description TEXT DEFAULT NULL,
-    IN p_max_resource_size INT DEFAULT 4096
-)
-    RETURNS BIGINT
-    LANGUAGE plpgsql
-AS
-$$
-DECLARE
-    v_folder_id BIGINT;
-BEGIN
-    INSERT INTO caldav.calendar_folder (name, description)
-    VALUES (p_name, p_description)
-    RETURNING id INTO v_folder_id;
-
-    INSERT INTO caldav.calendar_folder_property (calendar_folder_id, name, namespace, prop_value)
-    VALUES (v_folder_id, 'MaxResourceSize', p_types, p_max_resource_size::TEXT);
-
-    RETURN v_folder_id;
-END;
-$$;
-
-SELECT caldav.create_calendar_folder('Default Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
+INSERT INTO caldav.calendar_folder(name, types)
+VALUES ('Default Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
 
 CREATE TABLE IF NOT EXISTS caldav.access
 (
@@ -245,19 +224,17 @@ CREATE TABLE IF NOT EXISTS caldav.custom_property
 CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_file_uid     UUID NOT NULL,
-    component_type        BIT  NOT NULL,
-    date_timestamp        DATE NOT NULL,
-    created_at            DATE,
-    last_modified_at      DATE,
+    calendar_file_uid     UUID      NOT NULL,
+    component_type        BIT       NOT NULL,
+    date_timestamp        TIMESTAMP NOT NULL,
+    created_at            TIMESTAMP NOT NULL,
+    last_modified_at      TIMESTAMP,
     summary               VARCHAR(512),
     description           TEXT,
-    organizer_email       VARCHAR(255),
-    organizer_common_name VARCHAR(50),
-    start_date            DATE,
-    start_timezone_id     VARCHAR(255),
-    end_date              DATE,
-    end_timezone_id       VARCHAR(255),
+    url                   TEXT,
+    organizer             VARCHAR(255),
+    start_date            TIMESTAMP WITH TIME ZONE,
+    end_date              TIMESTAMP WITH TIME ZONE,
     duration              BIGINT,
     all_day               BIT,
     class                 VARCHAR(50),
@@ -269,7 +246,8 @@ CREATE TABLE IF NOT EXISTS caldav.event_component
     event_transparency    BIT,
     todo_completed        DATE,
     todo_percent_complete SMALLINT,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
+    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
+    UNIQUE (calendar_file_uid, created_at)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attachment
@@ -371,10 +349,8 @@ BEGIN
     INTO
         v_support_folder_id
     FROM caldav.calendar_folder f
-             JOIN
-         caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
     WHERE f.id = p_calendar_folder_id
-      AND p_calendar_folder_type = ANY (p.namespace);
+      AND p_calendar_folder_type = ANY (f.types);
 
     -- Проверяем, поддерживает ли папка данный тип
     IF v_support_folder_id IS DISTINCT FROM p_calendar_folder_id THEN

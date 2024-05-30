@@ -32,17 +32,25 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 type folder struct {
 	ID    int      `json:"id"`
 	Types []string `json:"types"`
+	Size  int64    `json:"size"`
 }
 
-func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
+func (r *repository) CreateFolder(
+	ctx context.Context,
+	homeSetPath string,
+	calendar *caldav.Calendar,
+) error {
 	q := `
-		SELECT caldav.create_calendar_folder($1, $2, $3, $4)
+		INSERT INTO caldav.calendar_folder
+			(name, description, types, max_size)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
 	`
 	r.logger.Debug(q)
 
 	var f folder
 
-	if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendar.SupportedComponentSet, calendar.Description, calendar.MaxResourceSize).Scan(&f.ID); err != nil {
+	if err := r.client.Pool.QueryRow(ctx, q, calendar.Name, calendar.Description, calendar.SupportedComponentSet, calendar.MaxResourceSize).Scan(&f.ID); err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error(err)
 		return err
@@ -57,12 +65,10 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 			f.id,
 			f.name,
     		COALESCE(f.description, '') as description,
-			array_agg(p.namespace) AS types,
-			max(CASE WHEN p.name = 'MaxResourceSize' THEN p.prop_value END) AS size
+			array_agg(f.types) AS types,
+			f.max_size AS size
 		FROM
 			caldav.calendar_folder f
-				JOIN
-			caldav.calendar_folder_property p ON f.id = p.calendar_folder_id
 		GROUP BY
 			f.id, f.name, f.description
 		ORDER BY
@@ -82,32 +88,29 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 
 	for rows.Next() {
 		var calendar caldav.Calendar
-		var maxResourceSize string
 
-		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &maxResourceSize)
+		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &f.Size)
 		if err != nil {
 			err = r.client.ToPgErr(err)
 			r.logger.Error(err)
 			return nil, err
 		}
 
-		if maxResourceSize != "" {
-			size, err := strconv.Atoi(maxResourceSize)
-			if err != nil {
-				return nil, err
-			}
-			calendar.MaxResourceSize = int64(size)
-		}
-
 		calendar.Path = strconv.Itoa(f.ID)
 		calendar.SupportedComponentSet = f.Types
+		calendar.MaxResourceSize = f.Size
 
 		calendars = append(calendars, calendar)
 	}
 	return calendars, nil
 }
 
-func (r *repository) PutObject(ctx context.Context, uid, eventType string, object *caldav.CalendarObject, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
+func (r *repository) PutObject(
+	ctx context.Context,
+	uid, eventType string,
+	object *caldav.CalendarObject,
+	opts *caldav.PutCalendarObjectOptions,
+) (*caldav.CalendarObject, error) {
 	q := `
 		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
@@ -145,7 +148,7 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = r.client.Pool.Exec(
+	_, err = tx.Exec(
 		ctx,
 		q,
 		uid,
@@ -170,38 +173,61 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 		(
 			calendar_file_uid, 
 			component_type,
-			date_timestamp
-		) VALUES ($1, $2, $3)
+			date_timestamp,
+			created_at,
+			last_modified_at,
+			summary,
+			description,
+		 	url,
+			organizer,
+			start_date,
+			end_date,
+			duration,
+			all_day,
+			class,
+			location,
+			priority,
+			sequence,
+			status,
+			categories,
+			event_transparency,
+			todo_completed,
+			todo_percent_complete
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		ON CONFLICT (calendar_file_uid, created_at) DO UPDATE SET
+    		component_type = EXCLUDED.component_type,
+    		date_timestamp = EXCLUDED.date_timestamp,
+			last_modified_at = EXCLUDED.last_modified_at,
+			summary = EXCLUDED.summary,
+			description = EXCLUDED.description,
+			url = EXCLUDED.url,
+			organizer = EXCLUDED.organizer,
+			start_date = EXCLUDED.start_date,
+			end_date = EXCLUDED.end_date,
+			duration = EXCLUDED.duration,
+			all_day = EXCLUDED.all_day,
+			class = EXCLUDED.class,
+			location = EXCLUDED.location,
+			priority = EXCLUDED.priority,
+			sequence = EXCLUDED.sequence,
+			status = EXCLUDED.status,
+			categories = EXCLUDED.categories,
+			event_transparency = EXCLUDED.event_transparency,
+			todo_completed = EXCLUDED.todo_completed,
+			todo_percent_complete = EXCLUDED.todo_percent_complete
 	`
-	//-- 			created_at,
-	//-- 			last_modified_at,
-	//-- 			summary,
-	//-- 			description,
-	//-- 			organizer_email,
-	//-- 			organizer_common_name,
-	//-- 			start_date,
-	//-- 			start_timezone_id,
-	//-- 			end_date,
-	//-- 			end_timezone_id,
-	//-- 			duration,
-	//-- 			all_day,
-	//-- 			class,
-	//-- 			location,
-	//-- 			priority,
-	//-- 			sequence,
-	//-- 			status,
-	//-- 			categories,
-	//-- 			event_transparency,
-	//-- 			todo_completed,
-	//-- 			todo_percent_complete
-	//--, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
-	r.logger.Info(sq)
+	//r.logger.Info(sq)
+
+	tz, _ := getTimezone(object)
 
 	eg := errgroup.Group{}
-	for _, event := range object.Data.Component.Children {
-		eg.Go(func() error {
-			return r.CreateEvent(ctx, sq, uid, event)
-		})
+
+	for _, child := range object.Data.Component.Children {
+		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
+			eg.Go(func() error {
+				return r.CreateEvent(ctx, tx, tz, sq, uid, child)
+			})
+		}
 	}
 
 	if err = eg.Wait(); err != nil {
@@ -216,7 +242,12 @@ func (r *repository) PutObject(ctx context.Context, uid, eventType string, objec
 	return object, nil
 }
 
-func (r *repository) CreateEvent(ctx context.Context, query, uid string, event *ical.Component) error {
+func (r *repository) CreateEvent(
+	ctx context.Context,
+	tx *postgres.Tx,
+	tz, query, uid string,
+	event *ical.Component,
+) error {
 	var compTypeBit string
 
 	switch event.Name {
@@ -228,8 +259,76 @@ func (r *repository) CreateEvent(ctx context.Context, query, uid string, event *
 		return fmt.Errorf("unknown event: %s", event.Name)
 	}
 
-	_, err := r.client.Pool.Exec(
-		ctx, query, uid, compTypeBit, time.Now().UTC(),
+	location, _ := time.LoadLocation(tz)
+
+	summary := getTextValue(event.Props.Get(ical.PropSummary))
+	description := getTextValue(event.Props.Get(ical.PropDescription))
+	organizer := getTextValue(event.Props.Get(ical.PropOrganizer))
+	duration := getTextValue(event.Props.Get(ical.PropDuration))
+	class := getTextValue(event.Props.Get(ical.PropClass))
+	loc := getTextValue(event.Props.Get(ical.PropLocation))
+	priority := getTextValue(event.Props.Get(ical.PropPriority))
+	url := getTextValue(event.Props.Get(ical.PropURL))
+	sequence := getTextValue(event.Props.Get(ical.PropSequence))
+	status := getTextValue(event.Props.Get(ical.PropStatus))
+	categories := getTextValue(event.Props.Get(ical.PropCategories))
+	transp := getTextValue(event.Props.Get(ical.PropTransparency))
+	completed := getTextValue(event.Props.Get(ical.PropCompleted))
+	perCompleted := getTextValue(event.Props.Get(ical.PropPercentComplete))
+	allDay := "0"
+
+	start, err := event.Props.DateTime(ical.PropDateTimeStart, location)
+	if err != nil {
+		return err
+	}
+	end, err := event.Props.DateTime(ical.PropDateTimeEnd, location)
+	if err != nil {
+		return err
+	}
+	created, err := event.Props.DateTime(ical.PropCreated, time.UTC)
+	if err != nil {
+		return err
+	}
+	timestamp, err := event.Props.DateTime(ical.PropDateTimeStamp, time.UTC)
+	if err != nil {
+		return err
+	}
+	lastModified, err := event.Props.DateTime(ical.PropLastModified, time.UTC)
+	if err != nil {
+		return err
+	}
+
+	if end.Sub(start) == time.Hour*24 {
+		allDay = "1"
+	}
+
+	r.logger.Debug(*transp)
+
+	_, err = tx.Exec(
+		ctx,
+		query,
+		uid,
+		compTypeBit,
+		timestamp,
+		created,
+		lastModified,
+		summary,
+		description,
+		url,
+		organizer,
+		start,
+		end,
+		duration,
+		allDay,
+		class,
+		loc,
+		priority,
+		sequence,
+		status,
+		categories,
+		nil,
+		completed,
+		perCompleted,
 	)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -237,4 +336,20 @@ func (r *repository) CreateEvent(ctx context.Context, query, uid string, event *
 		return err
 	}
 	return nil
+}
+
+func getTimezone(calendarObject *caldav.CalendarObject) (string, error) {
+	for _, child := range calendarObject.Data.Component.Children {
+		if child.Name == ical.CompTimezone {
+			return child.Props.Text(ical.ParamTimezoneID)
+		}
+	}
+	return time.UTC.String(), fmt.Errorf("timezone not found")
+}
+
+func getTextValue(prop *ical.Prop) *string {
+	if prop == nil {
+		return nil
+	}
+	return &prop.Value
 }
