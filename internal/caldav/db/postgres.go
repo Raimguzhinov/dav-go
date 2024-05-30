@@ -14,6 +14,7 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -72,7 +73,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		GROUP BY
 			f.id, f.name, f.description
 		ORDER BY
-			f.id; 
+			f.id 
 		`
 	r.logger.Debug(q)
 
@@ -84,7 +85,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	}
 
 	var f folder
-	calendars := make([]caldav.Calendar, 0)
+	var calendars []caldav.Calendar
 
 	for rows.Next() {
 		var calendar caldav.Calendar
@@ -105,6 +106,30 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	return calendars, nil
 }
 
+func (r *repository) GetFileInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error) {
+	q := `
+		SELECT
+		    etag, modified_at, size
+		FROM
+		    caldav.calendar_file
+		WHERE
+		    uid = $1
+		`
+	//r.logger.Debug(q)
+
+	var calendar caldav.CalendarObject
+
+	if err := r.client.Pool.QueryRow(ctx, q, uid).Scan(
+		&calendar.ETag, &calendar.ModTime, &calendar.ContentLength,
+	); err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return nil, err
+	}
+
+	return &calendar, nil
+}
+
 func (r *repository) PutObject(
 	ctx context.Context,
 	uid, eventType string,
@@ -112,7 +137,7 @@ func (r *repository) PutObject(
 	opts *caldav.PutCalendarObjectOptions,
 ) (*caldav.CalendarObject, error) {
 	q := `
-		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 	r.logger.Debug(q)
 
@@ -123,6 +148,7 @@ func (r *repository) PutObject(
 		want string
 		err  error
 	)
+
 	if ifMatch {
 		want, err = opts.IfMatch.ETag()
 		if err != nil {
@@ -157,6 +183,7 @@ func (r *repository) PutObject(
 		object.ETag,
 		want,
 		object.ModTime,
+		object.ContentLength,
 		version,
 		prodID,
 		ifNoneMatch,
@@ -225,7 +252,7 @@ func (r *repository) PutObject(
 	for _, child := range object.Data.Component.Children {
 		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
 			eg.Go(func() error {
-				return r.CreateEvent(ctx, tx, tz, sq, uid, child)
+				return r.createEvent(ctx, tx, tz, sq, uid, child)
 			})
 		}
 	}
@@ -242,7 +269,7 @@ func (r *repository) PutObject(
 	return object, nil
 }
 
-func (r *repository) CreateEvent(
+func (r *repository) createEvent(
 	ctx context.Context,
 	tx *postgres.Tx,
 	tz, query, uid string,
@@ -272,7 +299,7 @@ func (r *repository) CreateEvent(
 	sequence := getTextValue(event.Props.Get(ical.PropSequence))
 	status := getTextValue(event.Props.Get(ical.PropStatus))
 	categories := getTextValue(event.Props.Get(ical.PropCategories))
-	transp := getTextValue(event.Props.Get(ical.PropTransparency))
+	//transp := getTextValue(event.Props.Get(ical.PropTransparency))
 	completed := getTextValue(event.Props.Get(ical.PropCompleted))
 	perCompleted := getTextValue(event.Props.Get(ical.PropPercentComplete))
 	allDay := "0"
@@ -301,8 +328,6 @@ func (r *repository) CreateEvent(
 	if end.Sub(start) == time.Hour*24 {
 		allDay = "1"
 	}
-
-	r.logger.Debug(*transp)
 
 	_, err = tx.Exec(
 		ctx,
@@ -352,4 +377,189 @@ func getTextValue(prop *ical.Prop) *string {
 		return nil
 	}
 	return &prop.Value
+}
+
+func (r *repository) GetCalendar(
+	ctx context.Context,
+	uid string,
+	propFilter []string,
+) (*ical.Calendar, error) {
+	q := `
+		SELECT cp.version,
+		       cp.product,
+		       cp.scale,
+		       cp.method,
+		       ec.component_type,
+		       ec.date_timestamp,
+		       ec.created_at,
+		       ec.last_modified_at,
+		       ec.summary,
+		       ec.description,
+		       ec.url,
+		       ec.organizer,
+		       ec.start_date,
+		       ec.end_date,
+		       ec.duration,
+		       ec.all_day,
+		       ec.class,
+		       ec.location,
+		       ec.priority,
+		       ec.sequence,
+		       ec.status,
+		       ec.categories,
+		       ec.event_transparency,
+		       ec.todo_completed,
+		       ec.todo_percent_complete
+		FROM caldav.calendar_property AS cp
+		         JOIN caldav.event_component AS ec
+		              ON cp.calendar_file_uid = ec.calendar_file_uid
+		WHERE cp.calendar_file_uid = $1
+	`
+
+	var (
+		version, product                                                                    string
+		compTypeBit, allDay, transp                                                         pgtype.Bool
+		scale, method, summary, description, url, organizer, class, loc, status, categories pgtype.Text
+		timestamp, created, lastModified, start, end                                        pgtype.Timestamp
+		duration, priority, sequence, completed, perCompleted                               pgtype.Uint32
+	)
+
+	if err := r.client.Pool.QueryRow(ctx, q, uid).Scan(
+		&version,
+		&product,
+		&scale,
+		&method,
+		&compTypeBit,
+		&timestamp,
+		&created,
+		&lastModified,
+		&summary,
+		&description,
+		&url,
+		&organizer,
+		&start,
+		&end,
+		&duration,
+		&allDay,
+		&class,
+		&loc,
+		&priority,
+		&sequence,
+		&status,
+		&categories,
+		&transp,
+		&completed,
+		&perCompleted,
+	); err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return nil, err
+	}
+
+	calEvent := ical.NewEvent()
+
+	if compTypeBit.Valid {
+		if compTypeBit.Bool {
+			calEvent.Name = ical.CompEvent
+		} else {
+			calEvent.Name = ical.CompToDo
+		}
+	}
+
+	setTextValue(calEvent, ical.PropSummary, summary)
+	setTextValue(calEvent, ical.PropDescription, description)
+	setTextValue(calEvent, ical.PropUID, pgtype.Text{String: uid, Valid: true})
+	setTextValue(calEvent, ical.PropOrganizer, organizer)
+	setIntValue(calEvent, ical.PropDuration, duration)
+	setTextValue(calEvent, ical.PropClass, class)
+	setTextValue(calEvent, ical.PropLocation, loc)
+	setIntValue(calEvent, ical.PropPriority, priority)
+	setTextValue(calEvent, ical.PropURL, url)
+	setIntValue(calEvent, ical.PropSequence, sequence)
+	setTextValue(calEvent, ical.PropStatus, status)
+	setTextValue(calEvent, ical.PropCategories, categories)
+	//setTextValue(calEvent, ical.PropTransparency, transp)
+	setIntValue(calEvent, ical.PropCompleted, completed)
+	setIntValue(calEvent, ical.PropPercentComplete, perCompleted)
+	setTimestampValue(calEvent, ical.PropDateTimeStart, start)
+	setTimestampValue(calEvent, ical.PropDateTimeEnd, end)
+	setTimestampValue(calEvent, ical.PropCreated, created)
+	setTimestampValue(calEvent, ical.PropDateTimeStamp, timestamp)
+	setTimestampValue(calEvent, ical.PropLastModified, lastModified)
+
+	cal := ical.NewCalendar()
+
+	cal.Props.SetText(ical.PropVersion, version)
+	cal.Props.SetText(ical.PropProductID, product)
+	if scale.Valid {
+		cal.Props.SetText(ical.PropCalendarScale, scale.String)
+	}
+	if method.Valid {
+		cal.Props.SetText(ical.PropMethod, method.String)
+	}
+	cal.Children = []*ical.Component{calEvent.Component}
+
+	return cal, nil
+}
+
+func setTextValue(event *ical.Event, propName string, text pgtype.Text) {
+	if text.Valid {
+		event.Props.SetText(propName, text.String)
+	}
+}
+
+func setIntValue(event *ical.Event, propName string, value pgtype.Uint32) {
+	if value.Valid {
+		event.Props.SetText(propName, strconv.Itoa(int(value.Uint32)))
+	}
+}
+
+func setTimestampValue(event *ical.Event, propName string, value pgtype.Timestamp) {
+	if value.Valid {
+		event.Props.SetDateTime(propName, value.Time)
+	}
+}
+
+func (r *repository) FindObjects(
+	ctx context.Context,
+	folderID int,
+	propFilter []string,
+) ([]caldav.CalendarObject, error) {
+	q := `
+		SELECT uid,
+		       etag,
+		       modified_at,
+		       size
+		FROM caldav.calendar_file
+		WHERE calendar_folder_id = $1
+    `
+
+	var result []caldav.CalendarObject
+
+	rows, err := r.client.Pool.Query(ctx, q, &folderID)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error(err)
+		return nil, err
+	}
+
+	for rows.Next() {
+		var obj caldav.CalendarObject
+
+		err = rows.Scan(
+			&obj.Path,
+			&obj.ETag,
+			&obj.ModTime,
+			&obj.ContentLength,
+		)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error(err)
+			return nil, err
+		}
+
+		result = append(result, obj)
+	}
+
+	return result, nil
 }

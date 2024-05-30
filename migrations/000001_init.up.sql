@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_file
     etag               VARCHAR(40) NOT NULL, -- SHA-1 hash encoded in base64
     created_at         TIMESTAMP   NOT NULL,
     modified_at        TIMESTAMP   NOT NULL,
+    size               INT         NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
@@ -331,6 +332,7 @@ CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(
     IN p_etag VARCHAR(40),
     IN p_want_etag VARCHAR(40),
     IN p_modified_at TIMESTAMP,
+    IN p_size INT,
     IN p_version VARCHAR(5),
     IN p_product VARCHAR(100),
     IN p_if_none_match BOOLEAN DEFAULT FALSE,
@@ -379,7 +381,8 @@ BEGIN
         UPDATE
             caldav.calendar_file
         SET etag        = p_etag,
-            modified_at = p_modified_at
+            modified_at = p_modified_at,
+            size = p_size
         WHERE uid = p_calendar_uid;
     ELSE
         -- Если запись не существует и установлен If-Match, то возвращаем ошибку
@@ -388,8 +391,8 @@ BEGIN
         END IF;
 
         -- Вставляем новую запись
-        INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at)
-        VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, now()::timestamp, now()::timestamp);
+        INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at, size)
+        VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, now()::timestamp, now()::timestamp, p_size);
 
         INSERT INTO caldav.calendar_property (calendar_file_uid, version, product, scale, method)
         VALUES (p_calendar_uid, p_version, p_product, p_scale, p_method);

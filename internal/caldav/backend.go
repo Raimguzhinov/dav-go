@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
@@ -102,33 +104,92 @@ func (b *Backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Cale
 
 func (b *Backend) GetCalendarObject(
 	ctx context.Context,
-	path string,
+	objPath string,
 	req *caldav.CalendarCompRequest,
 ) (*caldav.CalendarObject, error) {
-	//for _, objs := range b.objectMap {
-	//	for _, obj := range objs {
-	//		if obj.Path == path {
-	//			return &obj, nil
-	//		}
-	//	}
-	//}
-	return nil, fmt.Errorf("couldn't find calendar object at: %s", path)
+	var propFilter []string
+	if req != nil && !req.AllProps {
+		propFilter = req.Props
+	}
+
+	uid := strings.TrimSuffix(path.Base(objPath), ".ics")
+
+	cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := b.repo.GetFileInfo(ctx, uid)
+	if err != nil {
+		return nil, fmt.Errorf("object for path: %s not found", objPath)
+	}
+
+	obj.Path = objPath
+	obj.Data = cal
+
+	return obj, err
 }
 
 func (b *Backend) ListCalendarObjects(
 	ctx context.Context,
-	path string,
+	urlPath string,
 	req *caldav.CalendarCompRequest,
 ) ([]caldav.CalendarObject, error) {
-	return nil, nil //b.objectMap[path], nil
+	var propFilter []string
+	if req != nil && !req.AllProps {
+		propFilter = req.Props
+	}
+	folderID, err := strconv.Atoi(path.Base(urlPath))
+	if err != nil {
+		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
+	}
+	objs, err := b.repo.FindObjects(ctx, folderID, propFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, obj := range objs {
+		uid := strings.TrimSuffix(path.Base(obj.Path), ".ics")
+
+		cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+		if err != nil {
+			return nil, err
+		}
+
+		objs[i].Data = cal
+	}
+	return objs, nil
 }
 
 func (b *Backend) QueryCalendarObjects(
 	ctx context.Context,
-	path string,
+	urlPath string,
 	query *caldav.CalendarQuery,
 ) ([]caldav.CalendarObject, error) {
-	return nil, nil
+	var propFilter []string
+	if query != nil && !query.CompRequest.AllProps {
+		propFilter = query.CompRequest.Props
+	}
+
+	folderID, err := strconv.Atoi(path.Base(urlPath))
+	if err != nil {
+		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
+	}
+	objs, err := b.repo.FindObjects(ctx, folderID, propFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, obj := range objs {
+		uid := strings.TrimSuffix(path.Base(obj.Path), ".ics")
+
+		cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+		if err != nil {
+			return nil, err
+		}
+
+		objs[i].Data = cal
+	}
+	return caldav.Filter(query, objs)
 }
 
 func (b *Backend) PutCalendarObject(
@@ -165,14 +226,14 @@ func (b *Backend) PutCalendarObject(
 		return nil, err
 	}
 
-	object := caldav.CalendarObject{
+	obj := &caldav.CalendarObject{
 		Path:          objPath,
 		ContentLength: size,
 		Data:          calendar,
 		ETag:          eTag,
 		ModTime:       time.Now().UTC(),
 	}
-	return b.repo.PutObject(ctx, uid, eventType, &object, opts)
+	return b.repo.PutObject(ctx, uid, eventType, obj, opts)
 }
 
 func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
