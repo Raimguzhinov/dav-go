@@ -165,16 +165,6 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_folder
     max_size    INT                    DEFAULT 4096
 );
 
-CREATE TABLE IF NOT EXISTS caldav.calendar_folder_property
-(
-    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_folder_id BIGINT       NOT NULL,
-    name               VARCHAR(255) NOT NULL,
-    namespace          VARCHAR(100) NOT NULL,
-    prop_value         TEXT         NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
-);
-
 INSERT INTO caldav.calendar_folder(name, types)
 VALUES ('Default Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calendar_type[]);
 
@@ -192,11 +182,11 @@ CREATE TABLE IF NOT EXISTS caldav.access
 CREATE TABLE IF NOT EXISTS caldav.calendar_file
 (
     uid                UUID PRIMARY KEY,
-    calendar_folder_id BIGINT      NOT NULL,
-    etag               VARCHAR(40) NOT NULL, -- SHA-1 hash encoded in base64
-    created_at         TIMESTAMP   NOT NULL,
-    modified_at        TIMESTAMP   NOT NULL,
-    size               INT         NOT NULL,
+    calendar_folder_id BIGINT                   NOT NULL,
+    etag               VARCHAR(40)              NOT NULL, -- SHA-1 hash encoded in base64
+    created_at         TIMESTAMP NOT NULL,
+    modified_at        TIMESTAMP NOT NULL,
+    size               INT                      NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
@@ -225,8 +215,8 @@ CREATE TABLE IF NOT EXISTS caldav.custom_property
 CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_file_uid     UUID      NOT NULL,
-    component_type        BIT       NOT NULL,
+    calendar_file_uid     UUID                     NOT NULL,
+    component_type        BIT                      NOT NULL,
     date_timestamp        TIMESTAMP NOT NULL,
     created_at            TIMESTAMP NOT NULL,
     last_modified_at      TIMESTAMP,
@@ -234,8 +224,8 @@ CREATE TABLE IF NOT EXISTS caldav.event_component
     description           TEXT,
     url                   TEXT,
     organizer             VARCHAR(255),
-    start_date            TIMESTAMP WITH TIME ZONE,
-    end_date              TIMESTAMP WITH TIME ZONE,
+    start_date            TIMESTAMP,
+    end_date              TIMESTAMP,
     duration              BIGINT,
     all_day               BIT,
     class                 VARCHAR(50),
@@ -382,7 +372,7 @@ BEGIN
             caldav.calendar_file
         SET etag        = p_etag,
             modified_at = p_modified_at,
-            size = p_size
+            size        = p_size
         WHERE uid = p_calendar_uid;
     ELSE
         -- Если запись не существует и установлен If-Match, то возвращаем ошибку

@@ -115,7 +115,7 @@ func (r *repository) GetFileInfo(ctx context.Context, uid string) (*caldav.Calen
 		WHERE
 		    uid = $1
 		`
-	//r.logger.Debug(q)
+	r.logger.Debug(q)
 
 	var calendar caldav.CalendarObject
 
@@ -145,12 +145,14 @@ func (r *repository) PutObject(
 	ifMatch := opts.IfMatch.IsSet()
 
 	var (
-		want string
-		err  error
+		wantEtag string
+		wantSeq  int
+		err      error
 	)
 
 	if ifMatch {
-		want, err = opts.IfMatch.ETag()
+		wantEtag, err = opts.IfMatch.ETag()
+		wantSeq++
 		if err != nil {
 			return nil, webdav.NewHTTPError(http.StatusBadRequest, err)
 		}
@@ -181,7 +183,7 @@ func (r *repository) PutObject(
 		eventType,
 		folderID,
 		object.ETag,
-		want,
+		wantEtag,
 		object.ModTime,
 		object.ContentLength,
 		version,
@@ -243,7 +245,7 @@ func (r *repository) PutObject(
 			todo_completed = EXCLUDED.todo_completed,
 			todo_percent_complete = EXCLUDED.todo_percent_complete
 	`
-	//r.logger.Info(sq)
+	r.logger.Info(sq)
 
 	tz, _ := getTimezone(object)
 
@@ -252,7 +254,7 @@ func (r *repository) PutObject(
 	for _, child := range object.Data.Component.Children {
 		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
 			eg.Go(func() error {
-				return r.createEvent(ctx, tx, tz, sq, uid, child)
+				return r.createEvent(ctx, tx, tz, sq, uid, wantSeq, child)
 			})
 		}
 	}
@@ -273,6 +275,7 @@ func (r *repository) createEvent(
 	ctx context.Context,
 	tx *postgres.Tx,
 	tz, query, uid string,
+	wantSequence int,
 	event *ical.Component,
 ) error {
 	var compTypeBit string
@@ -296,12 +299,23 @@ func (r *repository) createEvent(
 	loc := getTextValue(event.Props.Get(ical.PropLocation))
 	priority := getTextValue(event.Props.Get(ical.PropPriority))
 	url := getTextValue(event.Props.Get(ical.PropURL))
-	sequence := getTextValue(event.Props.Get(ical.PropSequence))
 	status := getTextValue(event.Props.Get(ical.PropStatus))
 	categories := getTextValue(event.Props.Get(ical.PropCategories))
 	//transp := getTextValue(event.Props.Get(ical.PropTransparency))
 	completed := getTextValue(event.Props.Get(ical.PropCompleted))
 	perCompleted := getTextValue(event.Props.Get(ical.PropPercentComplete))
+	sequence := getTextValue(event.Props.Get(ical.PropSequence))
+	if sequence == nil {
+		sequence = new(string)
+		*sequence = "1"
+	} else {
+		oldSeq, err := strconv.Atoi(*sequence)
+		if err != nil {
+			return err
+		}
+		*sequence = strconv.Itoa(oldSeq + wantSequence)
+	}
+
 	allDay := "0"
 
 	start, err := event.Props.DateTime(ical.PropDateTimeStart, location)
@@ -312,15 +326,17 @@ func (r *repository) createEvent(
 	if err != nil {
 		return err
 	}
-	created, err := event.Props.DateTime(ical.PropCreated, time.UTC)
+	created, err := event.Props.DateTime(ical.PropCreated, location)
 	if err != nil {
 		return err
 	}
-	timestamp, err := event.Props.DateTime(ical.PropDateTimeStamp, time.UTC)
+	r.logger.Info(created.UTC().String())
+
+	timestamp, err := event.Props.DateTime(ical.PropDateTimeStamp, location)
 	if err != nil {
 		return err
 	}
-	lastModified, err := event.Props.DateTime(ical.PropLastModified, time.UTC)
+	lastModified, err := event.Props.DateTime(ical.PropLastModified, location)
 	if err != nil {
 		return err
 	}
@@ -334,15 +350,15 @@ func (r *repository) createEvent(
 		query,
 		uid,
 		compTypeBit,
-		timestamp,
-		created,
-		lastModified,
+		timestamp.UTC(),
+		created.UTC(),
+		lastModified.UTC(),
 		summary,
 		description,
 		url,
 		organizer,
-		start,
-		end,
+		start.UTC(),
+		end.UTC(),
 		duration,
 		allDay,
 		class,
@@ -415,6 +431,7 @@ func (r *repository) GetCalendar(
 		              ON cp.calendar_file_uid = ec.calendar_file_uid
 		WHERE cp.calendar_file_uid = $1
 	`
+	r.logger.Debug(q)
 
 	var (
 		version, product                                                                    string
@@ -516,7 +533,7 @@ func setIntValue(event *ical.Event, propName string, value pgtype.Uint32) {
 
 func setTimestampValue(event *ical.Event, propName string, value pgtype.Timestamp) {
 	if value.Valid {
-		event.Props.SetDateTime(propName, value.Time)
+		event.Props.SetDateTime(propName, value.Time.UTC())
 	}
 }
 
@@ -533,6 +550,7 @@ func (r *repository) FindObjects(
 		FROM caldav.calendar_file
 		WHERE calendar_folder_id = $1
     `
+	r.logger.Debug(q)
 
 	var result []caldav.CalendarObject
 
