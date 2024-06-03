@@ -206,6 +206,23 @@ func (b *Backend) PutCalendarObject(
 	dirname, _ := path.Split(objPath)
 	objPath = path.Join(dirname, uid+".ics")
 
+	var tzIndex int
+	shouldRemoveTimezone := false
+
+	for i, child := range calendar.Component.Children {
+		if child.Name == ical.CompTimezone {
+			tzIndex = i
+			shouldRemoveTimezone = true
+		}
+	}
+
+	if shouldRemoveTimezone {
+		calendar.Component.Children = append(
+			calendar.Component.Children[:tzIndex],
+			calendar.Component.Children[tzIndex+1:]...,
+		)
+	}
+
 	var buf bytes.Buffer
 	f := bufio.NewWriter(&buf)
 
