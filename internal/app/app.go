@@ -2,24 +2,25 @@ package app
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/Raimguhinov/dav-go/configs"
+	"github.com/Raimguhinov/dav-go/internal/config"
 	"github.com/Raimguhinov/dav-go/pkg/httpserver"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 )
 
-func Run(cfg *configs.Config) {
-	l := logger.New(cfg.Log.Level)
+func Run(cfg *config.Config) {
+	l := logger.New(cfg.Log.Level, cfg.App.Env)
 
 	// Repository
-	pg, err := postgres.New(context.TODO(), cfg.PG.URL, postgres.MaxPoolSize(cfg.PG.PoolMax))
+	pg, err := postgres.New(context.TODO(), cfg.PG.URL, l, postgres.MaxPoolSize(cfg.PG.PoolMax))
 	if err != nil {
-		l.Fatal(fmt.Errorf("app - Run - repo.New: %w", err))
+		l.Error("app.Run", logger.Err(err))
+		os.Exit(1)
 	}
 	defer pg.Close()
 
@@ -38,14 +39,15 @@ func Run(cfg *configs.Config) {
 
 	select {
 	case s := <-interrupt:
-		l.Info("app - Run - signal: " + s.String())
+		l.Info("app.Run", slog.String("signal", s.String()))
 	case err = <-httpServer.Notify():
-		l.Error(fmt.Errorf("app - Run - httpServer.Notify: %w", err))
+		l.Error("app.Run", logger.Err(err))
 	}
 
 	// Shutdown
 	err = httpServer.Shutdown()
 	if err != nil {
-		l.Error(fmt.Errorf("app - Run - httpServer.Shutdown: %w", err))
+		l.Error("app.Run", logger.Err(err))
 	}
+	l.Info("Gracefully stopped")
 }
