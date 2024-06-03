@@ -1,106 +1,85 @@
 package logger
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/rs/zerolog"
+	"github.com/Raimguhinov/dav-go/pkg/logger/slogpretty"
 )
 
-// Interface -.
-type Interface interface {
-	Debug(message interface{}, args ...interface{})
-	Info(message string, args ...interface{})
-	Warn(message string, args ...interface{})
-	Error(message interface{}, args ...interface{})
-	Fatal(message interface{}, args ...interface{})
-}
+const (
+	envLocal = "local"
+	envDev   = "dev"
+	envProd  = "prod"
+)
 
 // Logger -.
 type Logger struct {
-	logger *zerolog.Logger
+	*slog.Logger
 }
 
-var _ Interface = (*Logger)(nil)
-
 // New -.
-func New(level string) *Logger {
-	var l zerolog.Level
+func New(level, env string) *Logger {
+	var lev slog.Level
 
 	switch strings.ToLower(level) {
 	case "error":
-		l = zerolog.ErrorLevel
+		lev = slog.LevelError
 	case "warn":
-		l = zerolog.WarnLevel
+		lev = slog.LevelWarn
 	case "info":
-		l = zerolog.InfoLevel
+		lev = slog.LevelInfo
 	case "debug":
-		l = zerolog.DebugLevel
+		lev = slog.LevelDebug
 	default:
-		l = zerolog.InfoLevel
+		lev = slog.LevelInfo
 	}
 
-	zerolog.SetGlobalLevel(l)
+	var logger *slog.Logger
 
-	skipFrameCount := 3
-	logger := zerolog.New(os.Stdout).
-		With().
-		Timestamp().
-		CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + skipFrameCount).
-		Logger()
-
-	return &Logger{
-		logger: &logger,
-	}
-}
-
-// Debug -.
-func (l *Logger) Debug(message interface{}, args ...interface{}) {
-	l.msg("debug", message, args...)
-}
-
-// Info -.
-func (l *Logger) Info(message string, args ...interface{}) {
-	l.log(message, args...)
-}
-
-// Warn -.
-func (l *Logger) Warn(message string, args ...interface{}) {
-	l.log(message, args...)
-}
-
-// Error -.
-func (l *Logger) Error(message interface{}, args ...interface{}) {
-	if l.logger.GetLevel() == zerolog.DebugLevel {
-		l.Debug(message, args...)
+	switch env {
+	case envLocal:
+		logger = setupPrettySlog(lev)
+	case envDev:
+		logger = slog.New(
+			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lev}),
+		)
+	case envProd:
+		logger = slog.New(
+			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		)
 	}
 
-	l.msg("error", message, args...)
+	return &Logger{logger}
 }
 
-// Fatal -.
-func (l *Logger) Fatal(message interface{}, args ...interface{}) {
-	l.msg("fatal", message, args...)
+func setupPrettySlog(level slog.Level) *slog.Logger {
+	opts := slogpretty.PrettyHandlerOptions{
+		SlogOpts: &slog.HandlerOptions{
+			Level: level,
+		},
+	}
 
-	os.Exit(1)
+	handler := opts.NewPrettyHandler(os.Stdout)
+
+	return slog.New(handler)
 }
 
-func (l *Logger) log(message string, args ...interface{}) {
-	if len(args) == 0 {
-		l.logger.Info().Msg(message)
-	} else {
-		l.logger.Info().Msgf(message, args...)
+func (l *Logger) Printf(msg string, args ...interface{}) {
+	l.Info(strings.TrimSpace(strings.ReplaceAll(msg, "%v", "")), slog.Any("args", args))
+}
+
+func Err(err error) slog.Attr {
+	return slog.Attr{
+		Key:   "error",
+		Value: slog.StringValue(err.Error()),
 	}
 }
 
-func (l *Logger) msg(level string, message interface{}, args ...interface{}) {
-	switch msg := message.(type) {
-	case error:
-		l.log(msg.Error(), args...)
-	case string:
-		l.log(msg, args...)
-	default:
-		l.log(fmt.Sprintf("%s message %v has unknown type %v", level, message, msg), args...)
+func Query(q string) slog.Attr {
+	return slog.Attr{
+		Key:   "query",
+		Value: slog.StringValue(slogpretty.PrettySQL(q)),
 	}
 }
