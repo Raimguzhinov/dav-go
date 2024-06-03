@@ -12,7 +12,7 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 )
 
-type UsecaseUrl struct {
+type UseCaseUrl struct {
 	storageURL    string
 	caldavPrefix  string
 	carddavPrefix string
@@ -22,8 +22,8 @@ type UsecaseUrl struct {
 func NewURL(
 	storageURL, caldavPrefix, carddavPrefix string,
 	upBackend webdav.UserPrincipalBackend,
-) *UsecaseUrl {
-	return &UsecaseUrl{
+) *UseCaseUrl {
+	return &UseCaseUrl{
 		storageURL:    storageURL,
 		caldavPrefix:  caldavPrefix,
 		carddavPrefix: carddavPrefix,
@@ -32,11 +32,11 @@ func NewURL(
 }
 
 func NewFromURL(
-	usecaseUrl *UsecaseUrl,
+	useCaseUrl *UseCaseUrl,
 	provider any,
 	logger *logger.Logger,
 ) (caldav.Backend, carddav.Backend, error) {
-	u, err := url.Parse(usecaseUrl.storageURL)
+	u, err := url.Parse(useCaseUrl.storageURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing storage URL: %s", err.Error())
 	}
@@ -48,9 +48,9 @@ func NewFromURL(
 			return nil, nil, fmt.Errorf("postgres provider not supported")
 		}
 		return repo.NewBackends(
-			usecaseUrl.upBackend,
-			usecaseUrl.caldavPrefix,
-			usecaseUrl.carddavPrefix,
+			useCaseUrl.upBackend,
+			useCaseUrl.caldavPrefix,
+			useCaseUrl.carddavPrefix,
 			pg,
 			logger,
 		)
