@@ -14,23 +14,23 @@ import (
 )
 
 func Run(cfg *config.Config) {
-	l := logger.New(cfg.Log.Level, cfg.App.Env)
+	log := logger.New(cfg.Log.Level, cfg.App.Env)
 
 	// Repository
-	pg, err := postgres.New(context.TODO(), cfg.PG.URL, l, postgres.MaxPoolSize(cfg.PG.PoolMax))
+	pg, err := postgres.New(context.TODO(), log, cfg.PG.URL, postgres.MaxPoolSize(cfg.PG.PoolMax))
 	if err != nil {
-		l.Error("app.Run", logger.Err(err))
+		log.Error("app.Run", logger.Err(err))
 		os.Exit(1)
 	}
 	defer pg.Close()
 
 	//authProvider, err := auth.NewFromURL(authURL)
 	//if err != nil {
-	//	l.Error(fmt.Errorf("failed to load auth provider: %w", err))
+	//	log.Error(fmt.Errorf("failed to load auth provider: %w", err))
 	//}
 
 	// HTTP Server
-	router := SetupRouter(l, pg, cfg)
+	router := SetupRouter(log, pg, cfg)
 	httpServer := httpserver.New(router, httpserver.Port(cfg.HTTP.Port))
 
 	// Waiting signal
@@ -39,15 +39,15 @@ func Run(cfg *config.Config) {
 
 	select {
 	case s := <-interrupt:
-		l.Info("app.Run", slog.String("signal", s.String()))
+		log.Info("app.Run", slog.String("signal", s.String()))
 	case err = <-httpServer.Notify():
-		l.Error("app.Run", logger.Err(err))
+		log.Error("app.Run", logger.Err(err))
 	}
 
 	// Shutdown
 	err = httpServer.Shutdown()
 	if err != nil {
-		l.Error("app.Run", logger.Err(err))
+		log.Error("app.Run", logger.Err(err))
 	}
-	l.Info("Gracefully stopped")
+	log.Info("Gracefully stopped")
 }

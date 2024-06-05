@@ -27,7 +27,7 @@ type Postgres struct {
 }
 
 // New -.
-func New(ctx context.Context, url string, logger *adapter.Logger, opts ...Option) (*Postgres, error) {
+func New(ctx context.Context, logger *adapter.Logger, url string, opts ...Option) (*Postgres, error) {
 	pg := &Postgres{
 		maxPoolSize:  _defaultMaxPoolSize,
 		connAttempts: _defaultConnAttempts,

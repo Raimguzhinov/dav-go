@@ -49,3 +49,10 @@ func (ct *Tx) Exec(ctx context.Context, sql string, args ...any) (pgconn.Command
 
 	return ct.tx.Exec(ctx, sql, args...)
 }
+
+func (ct *Tx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.SendBatch(ctx, b)
+}

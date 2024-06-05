@@ -2,11 +2,11 @@ package caldav_db
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
-	"time"
+	"strings"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -14,7 +14,7 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -30,20 +30,10 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 	}
 }
 
-type folder struct {
-	ID    int      `json:"id"`
-	Types []string `json:"types"`
-	Size  int64    `json:"size"`
-}
-
-func (r *repository) CreateFolder(
-	ctx context.Context,
-	homeSetPath string,
-	calendar *caldav.Calendar,
-) error {
+func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
 	r.logger.Debug("postgres.CreateFolder")
 
-	var f folder
+	var f Folder
 
 	err := r.client.Pool.QueryRow(ctx, `
 		INSERT INTO caldav.calendar_folder
@@ -83,24 +73,18 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		return nil, err
 	}
 
-	var f folder
+	var f Folder
 	var calendars []caldav.Calendar
 
 	for rows.Next() {
-		var calendar caldav.Calendar
-
-		err = rows.Scan(&f.ID, &calendar.Name, &calendar.Description, &f.Types, &f.Size)
+		err = rows.Scan(&f.ID, &f.Name, &f.Description, &f.Types, &f.Size)
 		if err != nil {
 			err = r.client.ToPgErr(err)
 			r.logger.Error("postgres.FindFolders", logger.Err(err))
 			return nil, err
 		}
 
-		calendar.Path = strconv.Itoa(f.ID)
-		calendar.SupportedComponentSet = f.Types
-		calendar.MaxResourceSize = f.Size
-
-		calendars = append(calendars, calendar)
+		calendars = append(calendars, f.ToDomain())
 	}
 	return calendars, nil
 }
@@ -216,72 +200,13 @@ func (r *repository) createEvent(
 	wantSequence int,
 	event *ical.Component,
 ) error {
-	var compTypeBit string
+	r.logger.Debug("postgres.createEvent")
 
-	switch event.Name {
-	case ical.CompEvent:
-		compTypeBit = "1"
-	case ical.CompToDo:
-		compTypeBit = "0"
-	default:
-		return fmt.Errorf("unknown event: %s", event.Name)
-	}
+	var parentID int
 
-	summary := getTextValue(event.Props.Get(ical.PropSummary))
-	description := getTextValue(event.Props.Get(ical.PropDescription))
-	organizer := getTextValue(event.Props.Get(ical.PropOrganizer))
-	duration := getTextValue(event.Props.Get(ical.PropDuration))
-	class := getTextValue(event.Props.Get(ical.PropClass))
-	loc := getTextValue(event.Props.Get(ical.PropLocation))
-	priority := getTextValue(event.Props.Get(ical.PropPriority))
-	url := getTextValue(event.Props.Get(ical.PropURL))
-	status := getTextValue(event.Props.Get(ical.PropStatus))
-	categories := getTextValue(event.Props.Get(ical.PropCategories))
-	//transp := getTextValue(event.Props.Get(ical.PropTransparency))
-	completed := getTextValue(event.Props.Get(ical.PropCompleted))
-	perCompleted := getTextValue(event.Props.Get(ical.PropPercentComplete))
-	sequence := getTextValue(event.Props.Get(ical.PropSequence))
-	if sequence == nil {
-		sequence = new(string)
-		*sequence = "1"
-	} else {
-		oldSeq, err := strconv.Atoi(*sequence)
-		if err != nil {
-			return err
-		}
-		*sequence = strconv.Itoa(oldSeq + wantSequence)
-	}
+	cal := ScanEvent(event, wantSequence)
 
-	allDay := "0"
-
-	start, err := event.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-	if err != nil {
-		return err
-	}
-	end, err := event.Props.DateTime(ical.PropDateTimeEnd, time.UTC)
-	if err != nil {
-		return err
-	}
-	created, err := event.Props.DateTime(ical.PropCreated, time.UTC)
-	if err != nil {
-		return err
-	}
-	r.logger.Info(created.UTC().String())
-
-	timestamp, err := event.Props.DateTime(ical.PropDateTimeStamp, time.UTC)
-	if err != nil {
-		return err
-	}
-	lastModified, err := event.Props.DateTime(ical.PropLastModified, time.UTC)
-	if err != nil {
-		return err
-	}
-
-	if end.Sub(start) == time.Hour*24 {
-		allDay = "1"
-	}
-
-	_, err = tx.Exec(ctx, `
+	err := tx.QueryRow(ctx, `
 		INSERT INTO caldav.event_component
 		(
 			calendar_file_uid, 
@@ -308,8 +233,8 @@ func (r *repository) createEvent(
 			todo_percent_complete
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (calendar_file_uid, created_at) DO UPDATE SET
-    		component_type = EXCLUDED.component_type,
-    		date_timestamp = EXCLUDED.date_timestamp,
+			component_type = EXCLUDED.component_type,
+			date_timestamp = EXCLUDED.date_timestamp,
 			last_modified_at = EXCLUDED.last_modified_at,
 			summary = EXCLUDED.summary,
 			description = EXCLUDED.description,
@@ -328,22 +253,60 @@ func (r *repository) createEvent(
 			event_transparency = EXCLUDED.event_transparency,
 			todo_completed = EXCLUDED.todo_completed,
 			todo_percent_complete = EXCLUDED.todo_percent_complete
-	`, uid, compTypeBit, timestamp, created, lastModified, summary, description, url, organizer, start, end,
-		duration, allDay, class, loc, priority, sequence, status, categories, nil, completed, perCompleted,
-	)
+		RETURNING id
+	`, uid, cal.CompTypeBit,
+		cal.Timestamp, cal.Created, cal.LastModified,
+		cal.Summary, cal.Description, cal.Url, cal.Organizer,
+		cal.Start, cal.End,
+		cal.Duration, cal.AllDay, cal.Class, cal.Loc, cal.Priority,
+		cal.Sequence, cal.Status, cal.Categories, cal.Transparent,
+		cal.Completed, cal.PerCompleted,
+	).Scan(&parentID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.createEvent", logger.Err(err))
 		return err
 	}
-	return nil
-}
 
-func getTextValue(prop *ical.Prop) *string {
-	if prop == nil {
-		return nil
+	var customProps []CustomProp
+	for k, v := range event.Props {
+		if strings.HasPrefix(k, "X-") {
+			var custom CustomProp
+
+			custom.ParentID = parentID
+			custom.Name = v[0].Name
+			custom.ParamName = string(v[0].ValueType())
+			custom.Value = v[0].Value
+
+			customProps = append(customProps, custom)
+		}
 	}
-	return &prop.Value
+	r.logger.Debug("Scanned custom prop", slog.Any("prop", customProps))
+
+	var batch = &pgx.Batch{}
+
+	for _, cp := range customProps {
+		batch.Queue(`
+			INSERT INTO caldav.custom_property
+			(
+				parent_id,
+			 	calendar_file_uid,
+				prop_name,
+				parameter_name,
+				value
+			) VALUES ($1, $2, $3, $4, $5)
+		`, cp.ParentID, uid, cp.Name, cp.ParamName, cp.Value)
+	}
+
+	res := tx.SendBatch(ctx, batch)
+
+	if err := res.Close(); err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.createEvent", logger.Err(err))
+		return err
+	}
+
+	return nil
 }
 
 func (r *repository) GetCalendar(
@@ -353,13 +316,7 @@ func (r *repository) GetCalendar(
 ) (*ical.Calendar, error) {
 	r.logger.Debug("postgres.GetCalendar")
 
-	var (
-		version, product                                                                    string
-		compTypeBit, allDay, transp                                                         pgtype.Bool
-		scale, method, summary, description, url, organizer, class, loc, status, categories pgtype.Text
-		timestamp, created, lastModified, start, end                                        pgtype.Timestamp
-		duration, priority, sequence, completed, perCompleted                               pgtype.Uint32
-	)
+	var cal Calendar
 
 	if err := r.client.Pool.QueryRow(ctx, `
 		SELECT
@@ -393,82 +350,18 @@ func (r *repository) GetCalendar(
 			ON cp.calendar_file_uid = ec.calendar_file_uid
 		WHERE cp.calendar_file_uid = $1
 	`, uid).Scan(
-		&version, &product, &scale, &method, &compTypeBit, &timestamp, &created, &lastModified,
-		&summary, &description, &url, &organizer, &start, &end, &duration, &allDay, &class, &loc, &priority,
-		&sequence, &status, &categories, &transp, &completed, &perCompleted,
+		&cal.Version, &cal.Product, &cal.Scale, &cal.Method, &cal.CompTypeBit,
+		&cal.Timestamp, &cal.Created, &cal.LastModified,
+		&cal.Summary, &cal.Description, &cal.Url, &cal.Organizer,
+		&cal.Start, &cal.End, &cal.Duration, &cal.AllDay, &cal.Class, &cal.Loc, &cal.Priority,
+		&cal.Sequence, &cal.Status, &cal.Categories, &cal.Transparent, &cal.Completed, &cal.PerCompleted,
 	); err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.GetCalendar", logger.Err(err))
 		return nil, err
 	}
 
-	calEvent := ical.NewEvent()
-
-	if compTypeBit.Valid {
-		if compTypeBit.Bool {
-			calEvent.Name = ical.CompEvent
-		} else {
-			calEvent.Name = ical.CompToDo
-		}
-	}
-
-	setTextValue(calEvent, ical.PropSummary, summary)
-	setTextValue(calEvent, ical.PropDescription, description)
-	setTextValue(calEvent, ical.PropUID, pgtype.Text{String: uid, Valid: true})
-	setTextValue(calEvent, ical.PropOrganizer, organizer)
-	setIntValue(calEvent, ical.PropDuration, duration)
-	setTextValue(calEvent, ical.PropClass, class)
-	setTextValue(calEvent, ical.PropLocation, loc)
-	setIntValue(calEvent, ical.PropPriority, priority)
-	setTextValue(calEvent, ical.PropURL, url)
-	setIntValue(calEvent, ical.PropSequence, sequence)
-	setTextValue(calEvent, ical.PropStatus, status)
-	setTextValue(calEvent, ical.PropCategories, categories)
-	//setTextValue(calEvent, ical.PropTransparency, transp)
-	setIntValue(calEvent, ical.PropCompleted, completed)
-	setIntValue(calEvent, ical.PropPercentComplete, perCompleted)
-	setTimestampValue(calEvent, ical.PropDateTimeStart, start)
-	setTimestampValue(calEvent, ical.PropDateTimeEnd, end)
-	setTimestampValue(calEvent, ical.PropCreated, created)
-	setTimestampValue(calEvent, ical.PropDateTimeStamp, timestamp)
-	setTimestampValue(calEvent, ical.PropLastModified, lastModified)
-	//TODO: should be handled in table custom_property
-	//setIntValue(calEvent, "X-MOZ-GENERATION", sequence)
-
-	cal := ical.NewCalendar()
-
-	cal.Props.SetText(ical.PropVersion, version)
-	cal.Props.SetText(ical.PropProductID, product)
-	if scale.Valid {
-		cal.Props.SetText(ical.PropCalendarScale, scale.String)
-	}
-	if method.Valid {
-		cal.Props.SetText(ical.PropMethod, method.String)
-	}
-	cal.Children = []*ical.Component{calEvent.Component}
-
-	return cal, nil
-}
-
-func setTextValue(event *ical.Event, propName string, text pgtype.Text) {
-	if text.Valid {
-		event.Props.SetText(propName, text.String)
-	}
-}
-
-func setIntValue(event *ical.Event, propName string, value pgtype.Uint32) {
-	if value.Valid {
-		intProp := ical.NewProp(propName)
-		intProp.SetValueType(ical.ValueInt)
-		intProp.Value = strconv.Itoa(int(value.Uint32))
-		event.Props.Set(intProp)
-	}
-}
-
-func setTimestampValue(event *ical.Event, propName string, value pgtype.Timestamp) {
-	if value.Valid {
-		event.Props.SetDateTime(propName, value.Time.UTC())
-	}
+	return cal.ToDomain(uid), nil
 }
 
 func (r *repository) FindObjects(
