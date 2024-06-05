@@ -12,7 +12,7 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 )
 
-type UseCaseUrl struct {
+type Url struct {
 	storageURL    string
 	caldavPrefix  string
 	carddavPrefix string
@@ -22,8 +22,8 @@ type UseCaseUrl struct {
 func NewURL(
 	storageURL, caldavPrefix, carddavPrefix string,
 	upBackend webdav.UserPrincipalBackend,
-) *UseCaseUrl {
-	return &UseCaseUrl{
+) *Url {
+	return &Url{
 		storageURL:    storageURL,
 		caldavPrefix:  caldavPrefix,
 		carddavPrefix: carddavPrefix,
@@ -32,7 +32,7 @@ func NewURL(
 }
 
 func NewFromURL(
-	useCaseUrl *UseCaseUrl,
+	useCaseUrl *Url,
 	provider any,
 	logger *logger.Logger,
 ) (caldav.Backend, carddav.Backend, error) {
