@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -67,7 +68,8 @@ func setupPrettySlog(level slog.Level) *slog.Logger {
 }
 
 func (l *Logger) Printf(msg string, args ...interface{}) {
-	l.Info(strings.TrimSpace(strings.ReplaceAll(msg, "%v", "")), slog.Any("args", args))
+	l.Info(strings.TrimSpace(fmt.Sprintf(msg, args...)))
+	//l.Info(strings.TrimSpace(strings.ReplaceAll(msg, "%v", "")), slog.Any("args", args))
 }
 
 func Err(err error) slog.Attr {

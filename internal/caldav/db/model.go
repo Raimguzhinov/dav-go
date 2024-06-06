@@ -34,6 +34,13 @@ type CustomProp struct {
 	Value     string `json:"value"`
 }
 
+func (cp *CustomProp) ToDomain() *ical.Prop {
+	custom := ical.NewProp(cp.Name)
+	custom.SetValueType(ical.ValueType(cp.ParamName))
+	custom.Value = cp.Value
+	return custom
+}
+
 type Calendar struct {
 	Version      string           `json:"version"`
 	Product      string           `json:"product"`
@@ -60,6 +67,7 @@ type Calendar struct {
 	Sequence     pgtype.Uint32    `json:"sequence,omitempty"`
 	Completed    pgtype.Uint32    `json:"completed,omitempty"`
 	PerCompleted pgtype.Uint32    `json:"perCompleted,omitempty"`
+	CustomProps  []CustomProp     `json:"customProps,omitempty"`
 }
 
 func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
@@ -71,24 +79,24 @@ func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
 		CompTypeBit:  pgtype.Text{Valid: false},
 		Transparent:  pgtype.Text{Valid: false},
 		AllDay:       pgtype.Text{String: "0", Valid: true},
-		Summary:      getTextValue(event, ical.PropSummary),
-		Description:  getTextValue(event, ical.PropDescription),
-		Url:          getTextValue(event, ical.PropURL),
-		Organizer:    getTextValue(event, ical.PropOrganizer),
-		Class:        getTextValue(event, ical.PropClass),
-		Loc:          getTextValue(event, ical.PropLocation),
-		Status:       getTextValue(event, ical.PropStatus),
-		Categories:   getTextValue(event, ical.PropCategories),
-		Timestamp:    getTimeValue(event, ical.PropDateTimeStamp),
-		Created:      getTimeValue(event, ical.PropCreated),
-		LastModified: getTimeValue(event, ical.PropLastModified),
-		Start:        getTimeValue(event, ical.PropDateTimeStart),
-		End:          getTimeValue(event, ical.PropDateTimeEnd),
-		Duration:     getIntValue(event, ical.PropDuration),
-		Priority:     getIntValue(event, ical.PropPriority),
+		Summary:      textValue(event, ical.PropSummary),
+		Description:  textValue(event, ical.PropDescription),
+		Url:          textValue(event, ical.PropURL),
+		Organizer:    textValue(event, ical.PropOrganizer),
+		Class:        textValue(event, ical.PropClass),
+		Loc:          textValue(event, ical.PropLocation),
+		Status:       textValue(event, ical.PropStatus),
+		Categories:   textValue(event, ical.PropCategories),
+		Timestamp:    timeValue(event, ical.PropDateTimeStamp),
+		Created:      timeValue(event, ical.PropCreated),
+		LastModified: timeValue(event, ical.PropLastModified),
+		Start:        timeValue(event, ical.PropDateTimeStart),
+		End:          timeValue(event, ical.PropDateTimeEnd),
+		Duration:     intValue(event, ical.PropDuration),
+		Priority:     intValue(event, ical.PropPriority),
 		Sequence:     updateSequence(event, wantSequence),
-		Completed:    getIntValue(event, ical.PropCompleted),
-		PerCompleted: getIntValue(event, ical.PropPercentComplete),
+		Completed:    intValue(event, ical.PropCompleted),
+		PerCompleted: intValue(event, ical.PropPercentComplete),
 	}
 
 	switch event.Name {
@@ -98,7 +106,7 @@ func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
 		cal.CompTypeBit = pgtype.Text{String: "0", Valid: true}
 	}
 
-	transparent := getTextValue(event, ical.PropTransparency)
+	transparent := textValue(event, ical.PropTransparency)
 	if transparent.Valid {
 		switch transparent.String {
 		case "OPAQUE":
@@ -115,7 +123,7 @@ func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
 	return &cal
 }
 
-func getTextValue(event *ical.Component, propName string) pgtype.Text {
+func textValue(event *ical.Component, propName string) pgtype.Text {
 	prop := event.Props.Get(propName)
 	if prop == nil {
 		return pgtype.Text{Valid: false}
@@ -123,7 +131,7 @@ func getTextValue(event *ical.Component, propName string) pgtype.Text {
 	return pgtype.Text{String: prop.Value, Valid: true}
 }
 
-func getIntValue(event *ical.Component, propName string, wantSequence ...int) pgtype.Uint32 {
+func intValue(event *ical.Component, propName string, wantSequence ...int) pgtype.Uint32 {
 	prop := event.Props.Get(propName)
 	if prop == nil {
 		return pgtype.Uint32{Valid: false}
@@ -147,7 +155,7 @@ func updateSequence(event *ical.Component, wantSequence int) pgtype.Uint32 {
 	return pgtype.Uint32{Uint32: uint32(val + wantSequence), Valid: true}
 }
 
-func getTimeValue(event *ical.Component, propName string) pgtype.Timestamp {
+func timeValue(event *ical.Component, propName string) pgtype.Timestamp {
 	prop := event.Props.Get(propName)
 	if prop == nil {
 		return pgtype.Timestamp{Valid: false}
@@ -196,6 +204,10 @@ func (c *Calendar) ToDomain(uid string) *ical.Calendar {
 		} else {
 			setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "TRANSPARENT", Valid: true})
 		}
+	}
+
+	for _, custom := range c.CustomProps {
+		calEvent.Props.Set(custom.ToDomain())
 	}
 
 	cal := ical.NewCalendar()

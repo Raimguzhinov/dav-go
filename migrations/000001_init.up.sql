@@ -201,17 +201,6 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_property
     CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
 );
 
-CREATE TABLE IF NOT EXISTS caldav.custom_property
-(
-    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    parent_id         BIGINT       NOT NULL,
-    calendar_file_uid UUID         NOT NULL,
-    prop_name         VARCHAR(50)  NOT NULL,
-    parameter_name    VARCHAR(50),
-    value             VARCHAR(512) NOT NULL,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
-);
-
 CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -239,6 +228,18 @@ CREATE TABLE IF NOT EXISTS caldav.event_component
     todo_percent_complete SMALLINT,
     CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
     UNIQUE (calendar_file_uid, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS caldav.custom_property
+(
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    parent_id         BIGINT       NOT NULL,
+    calendar_file_uid UUID         NOT NULL,
+    prop_name         VARCHAR(50)  NOT NULL,
+    parameter_name    VARCHAR(50),
+    value             VARCHAR(512) NOT NULL,
+    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
+    CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES caldav.event_component (id)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attachment

@@ -317,6 +317,7 @@ func (r *repository) GetCalendar(
 	r.logger.Debug("postgres.GetCalendar")
 
 	var cal Calendar
+	var eventID int
 
 	if err := r.client.Pool.QueryRow(ctx, `
 		SELECT
@@ -324,6 +325,7 @@ func (r *repository) GetCalendar(
 			cp.product,
 			cp.scale,
 			cp.method,
+			ec.id,
 			ec.component_type,
 			ec.date_timestamp,
 			ec.created_at,
@@ -350,7 +352,8 @@ func (r *repository) GetCalendar(
 			ON cp.calendar_file_uid = ec.calendar_file_uid
 		WHERE cp.calendar_file_uid = $1
 	`, uid).Scan(
-		&cal.Version, &cal.Product, &cal.Scale, &cal.Method, &cal.CompTypeBit,
+		&cal.Version, &cal.Product, &cal.Scale, &cal.Method,
+		&eventID, &cal.CompTypeBit,
 		&cal.Timestamp, &cal.Created, &cal.LastModified,
 		&cal.Summary, &cal.Description, &cal.Url, &cal.Organizer,
 		&cal.Start, &cal.End, &cal.Duration, &cal.AllDay, &cal.Class, &cal.Loc, &cal.Priority,
@@ -359,6 +362,39 @@ func (r *repository) GetCalendar(
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.GetCalendar", logger.Err(err))
 		return nil, err
+	}
+
+	rows, err := r.client.Pool.Query(ctx, `
+		SELECT
+			prop_name,
+			parameter_name,
+			value
+		FROM
+			caldav.custom_property
+		WHERE
+			calendar_file_uid = $1
+			AND parent_id = $2
+	`, uid, eventID)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.GetCalendar", logger.Err(err))
+		return nil, err
+	}
+
+	for rows.Next() {
+		var prop CustomProp
+
+		err = rows.Scan(
+			&prop.Name,
+			&prop.ParamName,
+			&prop.Value,
+		)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.GetCalendar", logger.Err(err))
+			return nil, err
+		}
+		cal.CustomProps = append(cal.CustomProps, prop)
 	}
 
 	return cal.ToDomain(uid), nil

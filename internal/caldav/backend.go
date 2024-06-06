@@ -58,7 +58,7 @@ func (b *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 
 func (b *backend) createDefaultCalendar(ctx context.Context) error {
 	if err := b.CreateCalendar(ctx, &caldav.Calendar{
-		Name:                  "Alien",
+		Name:                  "Private",
 		Description:           "Test",
 		MaxResourceSize:       4096,
 		SupportedComponentSet: []string{"VEVENT", "VTODO"},
@@ -123,10 +123,30 @@ func (b *backend) GetCalendarObject(
 		return nil, fmt.Errorf("object for path: %s not found", objPath)
 	}
 
+	var buf bytes.Buffer
+	f := bufio.NewWriter(&buf)
+
+	enc := ical.NewEncoder(f)
+	err = enc.Encode(cal)
+	if err != nil {
+		return nil, err
+	}
+
+	err = f.Flush()
+	if err != nil {
+		return nil, err
+	}
+
+	length := int64(buf.Len())
+
 	obj.Path = objPath
 	obj.Data = cal
 
-	return obj, err
+	if obj.ContentLength != length {
+		obj.ContentLength = length
+	}
+
+	return obj, nil
 }
 
 func (b *backend) ListCalendarObjects(
@@ -214,6 +234,15 @@ func (b *backend) PutCalendarObject(
 			tzIndex = i
 			shouldRemoveTimezone = true
 		}
+		if child.Name == eventType {
+			for _, v := range child.Props {
+				if v[0].ValueType() == ical.ValueDateTime {
+					oldTime, _ := v[0].DateTime(time.UTC)
+					v[0].SetDateTime(oldTime.UTC())
+					delete(v[0].Params, ical.ParamTimezoneID)
+				}
+			}
+		}
 	}
 
 	if shouldRemoveTimezone {
@@ -237,7 +266,6 @@ func (b *backend) PutCalendarObject(
 		return nil, err
 	}
 
-	size := int64(buf.Len())
 	eTag, err := etag.FromData(buf.Bytes())
 	if err != nil {
 		return nil, err
@@ -245,7 +273,7 @@ func (b *backend) PutCalendarObject(
 
 	obj := &caldav.CalendarObject{
 		Path:          objPath,
-		ContentLength: size,
+		ContentLength: int64(buf.Len()),
 		Data:          calendar,
 		ETag:          eTag,
 		ModTime:       time.Now().UTC(),
