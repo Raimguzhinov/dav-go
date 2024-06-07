@@ -8,6 +8,7 @@ import (
 	"time"
 
 	adapter "github.com/Raimguhinov/dav-go/pkg/logger"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,7 +24,8 @@ type Postgres struct {
 	connAttempts int
 	connTimeout  time.Duration
 
-	Pool *pgxpool.Pool
+	Pool  *pgxpool.Pool
+	Batch *pgx.Batch
 }
 
 // New -.

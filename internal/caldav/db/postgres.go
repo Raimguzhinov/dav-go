@@ -1,4 +1,4 @@
-package caldav_db
+package db
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -169,8 +168,6 @@ func (r *repository) PutObject(
 		return nil, err
 	}
 
-	r.logger.Debug("postgres.PutObject")
-
 	eg := errgroup.Group{}
 
 	for _, child := range object.Data.Component.Children {
@@ -283,7 +280,7 @@ func (r *repository) createEvent(
 	}
 	r.logger.Debug("Scanned custom prop", slog.Any("prop", customProps))
 
-	var batch = &pgx.Batch{}
+	var batch = r.client.Batch
 
 	for _, cp := range customProps {
 		batch.Queue(`

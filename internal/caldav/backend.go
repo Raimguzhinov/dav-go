@@ -158,6 +158,8 @@ func (b *backend) ListCalendarObjects(
 	if req != nil && !req.AllProps {
 		propFilter = req.Props
 	}
+
+	homeSetPath, _ := b.CalendarHomeSetPath(ctx)
 	folderID, err := strconv.Atoi(path.Base(urlPath))
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
@@ -176,6 +178,7 @@ func (b *backend) ListCalendarObjects(
 		}
 
 		objs[i].Data = cal
+		objs[i].Path = path.Join(homeSetPath, strconv.Itoa(folderID), uid+".ics")
 	}
 	return objs, nil
 }
@@ -190,6 +193,7 @@ func (b *backend) QueryCalendarObjects(
 		propFilter = query.CompRequest.Props
 	}
 
+	homeSetPath, _ := b.CalendarHomeSetPath(ctx)
 	folderID, err := strconv.Atoi(path.Base(urlPath))
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
@@ -208,6 +212,7 @@ func (b *backend) QueryCalendarObjects(
 		}
 
 		objs[i].Data = cal
+		objs[i].Path = path.Join(homeSetPath, strconv.Itoa(folderID), uid+".ics")
 	}
 	return caldav.Filter(query, objs)
 }

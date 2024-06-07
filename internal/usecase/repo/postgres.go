@@ -2,7 +2,7 @@ package repo
 
 import (
 	caldavBackend "github.com/Raimguhinov/dav-go/internal/caldav"
-	"github.com/Raimguhinov/dav-go/internal/caldav/db"
+	caldavDB "github.com/Raimguhinov/dav-go/internal/caldav/db"
 	carddavBackend "github.com/Raimguhinov/dav-go/internal/carddav"
 	"github.com/Raimguhinov/dav-go/internal/carddav/db"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -21,7 +21,7 @@ func NewBackends(
 	calBackend, err := caldavBackend.New(
 		upBackend,
 		caldavPrefix,
-		caldav_db.NewRepository(pg, logger),
+		caldavDB.NewRepository(pg, logger),
 	)
 	if err != nil {
 		return nil, nil, err

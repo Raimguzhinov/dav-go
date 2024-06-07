@@ -1,4 +1,4 @@
-package caldav_db
+package db
 
 import (
 	"strconv"
