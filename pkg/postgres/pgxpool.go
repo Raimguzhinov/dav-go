@@ -34,6 +34,8 @@ func New(ctx context.Context, logger *adapter.Logger, url string, opts ...Option
 		maxPoolSize:  _defaultMaxPoolSize,
 		connAttempts: _defaultConnAttempts,
 		connTimeout:  _defaultConnTimeout,
+
+		Batch: &pgx.Batch{},
 	}
 
 	// Custom options

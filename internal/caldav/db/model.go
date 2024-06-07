@@ -148,9 +148,9 @@ func updateSequence(event *ical.Component, wantSequence int) pgtype.Uint32 {
 	if prop == nil {
 		return pgtype.Uint32{Uint32: 1, Valid: true}
 	}
-	val, err := prop.Int()
+	val, err := strconv.Atoi(prop.Value)
 	if err != nil {
-		return pgtype.Uint32{Uint32: 1, Valid: true}
+		return pgtype.Uint32{Uint32: uint32(wantSequence), Valid: true}
 	}
 	return pgtype.Uint32{Uint32: uint32(val + wantSequence), Valid: true}
 }
