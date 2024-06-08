@@ -8,6 +8,7 @@ require (
 	github.com/emersion/go-webdav v0.5.1-0.20240419143909-21f251fa1de2
 	github.com/fatih/color v1.17.0
 	github.com/go-chi/chi/v5 v5.0.12
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/rs/cors v1.11.0

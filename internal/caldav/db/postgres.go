@@ -7,6 +7,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -14,6 +15,7 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/teambition/rrule-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -279,6 +281,96 @@ func (r *repository) createEvent(
 		}
 	}
 	r.logger.Debug("Scanned custom prop", slog.Any("prop", customProps))
+
+	recurrenceSet, err := event.RecurrenceSet(time.UTC)
+	if err != nil {
+		return err
+	}
+
+	var weekdayMask time.Weekday
+	var monthMask time.Month
+	var monthdayMask int
+	var numWeekday int
+
+	options := recurrenceSet.GetRRule().Options
+
+	if options.Byweekday != nil {
+		for _, wk := range options.Byweekday {
+			if wk.Day()+1 == 7 {
+				weekdayMask |= 1 << time.Sunday
+				continue
+			}
+			weekdayMask |= 1 << (wk.Day() + 1)
+			numWeekday = wk.N()
+		}
+	} else {
+		switch options.Freq {
+		case rrule.DAILY:
+			weekdayMask = 127
+		case rrule.WEEKLY:
+			weekdayMask |= 1 << options.Dtstart.Weekday()
+		default:
+		}
+	}
+
+	if options.Bymonth != nil {
+		for _, m := range options.Bymonth {
+			monthMask |= 1 << m
+		}
+	}
+
+	if options.Bymonthday != nil {
+		for _, md := range options.Bymonthday {
+			if md < 1 || md > 31 {
+				monthdayMask |= 1 << 0
+				continue
+			}
+			monthdayMask |= 1 << md
+		}
+	}
+
+	interval := options.Interval
+	cnt := options.Count
+	until := options.Until
+	wkst := options.Wkst
+	bysetpos := options.Bysetpos
+
+	r.logger.Debug(recurrenceSet.String())
+	r.logger.Debug("Scanned recurrence rule",
+		slog.Any("interval", interval),
+		slog.Any("cnt", cnt),
+		slog.Any("until", until),
+		slog.Any("wkst", wkst.String()),
+		slog.Any("bysetpos", bysetpos),
+	)
+
+	for i := time.Sunday; i <= time.Saturday; i++ {
+		if weekdayMask&time.Weekday(1<<i) != 0 {
+			r.logger.Debug("weekday mask",
+				slog.String("weekday", i.String()),
+				slog.Int("every", numWeekday),
+			)
+		}
+	}
+	r.logger.Debug("Scanned weekday mask", slog.Any("mask", weekdayMask))
+
+	for i := time.January; i <= time.December; i++ {
+		if monthMask&time.Month(1<<i) != 0 {
+			r.logger.Debug("month mask", slog.String("month", i.String()))
+		}
+	}
+	r.logger.Debug("Scanned month mask", slog.Any("mask", monthMask))
+
+	for i := 0; i <= 31; i++ {
+		if monthdayMask&int(1<<i) != 0 {
+			if i == 0 {
+				r.logger.Debug("monthday mask", slog.String("monthday", "Last day of month"))
+				continue
+			}
+			r.logger.Debug("monthday mask", slog.Int("monthday", i))
+		}
+	}
+	r.logger.Debug("Scanned monthday mask", slog.Any("mask", monthdayMask))
 
 	var batch = r.client.Batch
 

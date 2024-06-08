@@ -14,6 +14,7 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/google/uuid"
 )
 
 type backend struct {
@@ -111,8 +112,10 @@ func (b *backend) GetCalendarObject(
 	if req != nil && !req.AllProps {
 		propFilter = req.Props
 	}
-
 	uid := strings.TrimSuffix(path.Base(objPath), ".ics")
+	if err := uuid.Validate(uid); err != nil {
+		return nil, fmt.Errorf("object for path: %s not found", objPath)
+	}
 
 	cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
 	if err != nil {
