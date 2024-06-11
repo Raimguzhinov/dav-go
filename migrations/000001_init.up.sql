@@ -3,22 +3,25 @@ BEGIN;
 CREATE SCHEMA IF NOT EXISTS carddav;
 CREATE SCHEMA IF NOT EXISTS caldav;
 
-CREATE TABLE IF NOT EXISTS carddav.addressbook_folder
+CREATE TYPE carddav.address_data_type AS
 (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(50) NOT NULL,
-    description TEXT
+    content_type TEXT,
+    type_version TEXT
 );
 
-CREATE TABLE IF NOT EXISTS carddav.addressbook_folder_property
+CREATE TABLE IF NOT EXISTS carddav.addressbook_folder
 (
-    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    addressbook_folder_id BIGINT       NOT NULL,
-    name                  VARCHAR(255) NOT NULL,
-    namespace             VARCHAR(100) NOT NULL,
-    prop_value            TEXT         NOT NULL,
-    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name                   VARCHAR(50) NOT NULL,
+    description            TEXT                DEFAULT NULL,
+    max_resource_size      INT                 DEFAULT 4096,
+    supported_address_data carddav.address_data_type[] DEFAULT NULL
 );
+
+INSERT INTO carddav.addressbook_folder
+(name, description, max_resource_size, supported_address_data)
+VALUES ('My Contacts', 'Default Address Book', 4096, ARRAY [ROW('text/vcard', '3.0'), ROW('text/vcard', '4.0')]::carddav.address_data_type[]);
+
 
 CREATE TABLE IF NOT EXISTS carddav.access
 (
