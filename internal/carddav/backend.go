@@ -11,9 +11,9 @@ import (
 	"github.com/emersion/go-vcard"
 )
 
-type Backend struct {
+type backend struct {
 	webdav.UserPrincipalBackend
-	Prefix string
+	prefix string
 	repo   Repository
 }
 
@@ -33,106 +33,83 @@ END:VCARD`
 	//addressBookPathKey      = contextKey("test:addressBookPath")
 )
 
-func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*Backend, error) {
-	return &Backend{
+func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*backend, error) {
+	return &backend{
 		UserPrincipalBackend: upBackend,
-		Prefix:               prefix,
+		prefix:               prefix,
 		repo:                 repository,
 	}, nil
 }
 
-func (b *Backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
+func (b *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
 	upPath, err := b.CurrentUserPrincipal(ctx)
 	if err != nil {
 		return "", err
 	}
-	return path.Join(upPath, b.Prefix) + "/", nil
+	return path.Join(upPath, b.prefix) + "/", nil
 }
 
-func (b *Backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
-	datatype := make([]carddav.AddressDataType, 0)
-	datatype = append(datatype,
-		carddav.AddressDataType{
-			ContentType: "text/vcard",
-			Version:     "3.0",
-		},
-		carddav.AddressDataType{
-			ContentType: "text/vcard",
-			Version:     "4.0",
-		},
-		carddav.AddressDataType{
-			ContentType: "application/vcard",
-			Version:     "4.0",
-		},
-	)
-	//p := ctx.Value(addressBookPathKey).(string)
+func (b *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
+	addressbooks, err := b.repo.FindFolders(ctx)
+	if err != nil {
+		return nil, err
+	}
 	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	//addrbook := carddav.AddressBook{
-	//	Path:            path.Join(homeSetPath, "-/"),
-	//	Name:            "My contacts",
-	//	Description:     "Default address book",
-	//	MaxResourceSize: 10 * 1024,
-	//}
-
-	return []carddav.AddressBook{
-		{
-			Path:                 homeSetPath + "1/",
-			Name:                 "My contacts1",
-			Description:          "Default address book",
-			MaxResourceSize:      10 * 1024,
-			SupportedAddressData: datatype,
-		},
-
-		{
-			Path:                 homeSetPath + "2/",
-			Name:                 "My contacts2",
-			Description:          "Default address book",
-			MaxResourceSize:      10 * 1024,
-			SupportedAddressData: datatype,
-		},
-	}, nil
+	for _, addressbook := range addressbooks {
+		addressbook.Path = path.Join(homeSetPath, addressbook.Path) + "/"
+	}
+	return addressbooks, nil
 }
 
-func (b *Backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
-	datatype := make([]carddav.AddressDataType, 0)
-	datatype = append(datatype,
-		carddav.AddressDataType{
-			ContentType: "text/vcard",
-			Version:     "3.0",
-		},
-		carddav.AddressDataType{
-			ContentType: "text/vcard",
-			Version:     "4.0",
-		},
-		carddav.AddressDataType{
-			ContentType: "application/vcard",
-			Version:     "4.0",
-		},
-	)
-	return &carddav.AddressBook{
-		Path:                 urlPath,
-		Name:                 "My contacts",
-		Description:          "Default address book",
-		MaxResourceSize:      10 * 1024,
-		SupportedAddressData: datatype,
-	}, nil
-	//panic("TODO: implement GetAddressBook")
+func (b *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
+	addressbooks, err := b.repo.FindFolders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, addressbook := range addressbooks {
+		if path.Join(homeSetPath, addressbook.Path)+"/" == urlPath {
+			return &addressbook, nil
+		}
+	}
+	return nil, fmt.Errorf("addressbook for path: %s not found", urlPath)
 }
 
-func (b *Backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
-	panic("TODO: implement CreateAddressBook")
+func (b *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
+	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+	if err != nil {
+		return err
+	}
+	err = b.repo.CreateFolder(ctx, homeSetPath, addressBook)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (b *Backend) DeleteAddressBook(ctx context.Context, path string) error {
-	panic("TODO: implement DeleteAddressBook")
+func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
+	addressbook, err := b.GetAddressBook(ctx, path)
+	if err != nil {
+		return err
+	}
+	err = b.repo.DeleteFolder(ctx, addressbook)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (b *Backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
-	if path == "/admin/contacts/default/" {
+func (b *backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	// TODO
+	if path == "/admin/contacts/1/" {
 		card, err := vcard.NewDecoder(strings.NewReader(aliceData)).Decode()
 		if err != nil {
 			return nil, err
@@ -147,7 +124,8 @@ func (b *Backend) GetAddressObject(ctx context.Context, path string, req *cardda
 	//panic("TODO: implement GetAddressObject")
 }
 
-func (b *Backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+func (b *backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+	// TODO
 	alice, err := b.GetAddressObject(ctx, "/admin/contacts/default/", req)
 	if err != nil {
 		return nil, err
@@ -156,14 +134,18 @@ func (b *Backend) ListAddressObjects(ctx context.Context, path string, req *card
 	//panic("TODO: implement")
 }
 
-func (b *Backend) QueryAddressObjects(ctx context.Context, path string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+func (b *backend) QueryAddressObjects(ctx context.Context, path string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+	// TODO
 	panic("TODO: implement QueryAddressObjects")
 }
 
-func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+func (b *backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+	// TODO
+
 	panic("TODO: implement PutAddressObject")
 }
 
-func (b *Backend) DeleteAddressObject(ctx context.Context, path string) error {
+func (b *backend) DeleteAddressObject(ctx context.Context, path string) error {
+	// TODO
 	panic("TODO: implement DeleteAddressObject")
 }
