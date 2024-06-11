@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ceres919/go-webdav/caldav"
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

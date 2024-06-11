@@ -7,9 +7,9 @@ import (
 	"github.com/Raimguhinov/dav-go/internal/carddav/db"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/caldav"
-	"github.com/emersion/go-webdav/carddav"
+	"github.com/ceres919/go-webdav"
+	"github.com/ceres919/go-webdav/caldav"
+	"github.com/ceres919/go-webdav/carddav"
 )
 
 func NewBackends(

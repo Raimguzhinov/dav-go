@@ -6,9 +6,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/ceres919/go-webdav"
+	"github.com/ceres919/go-webdav/carddav"
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/carddav"
 )
 
 type Backend struct {

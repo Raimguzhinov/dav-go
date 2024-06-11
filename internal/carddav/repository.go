@@ -3,7 +3,7 @@ package carddav
 import (
 	"context"
 
-	"github.com/emersion/go-webdav/carddav"
+	"github.com/ceres919/go-webdav/carddav"
 )
 
 type Repository interface {
