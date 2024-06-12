@@ -185,11 +185,11 @@ CREATE TABLE IF NOT EXISTS caldav.access
 CREATE TABLE IF NOT EXISTS caldav.calendar_file
 (
     uid                UUID PRIMARY KEY,
-    calendar_folder_id BIGINT                   NOT NULL,
-    etag               VARCHAR(40)              NOT NULL, -- SHA-1 hash encoded in base64
-    created_at         TIMESTAMP NOT NULL,
-    modified_at        TIMESTAMP NOT NULL,
-    size               INT                      NOT NULL,
+    calendar_folder_id BIGINT      NOT NULL,
+    etag               VARCHAR(40) NOT NULL, -- SHA-1 hash encoded in base64
+    created_at         TIMESTAMP   NOT NULL,
+    modified_at        TIMESTAMP   NOT NULL,
+    size               INT         NOT NULL,
     CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
 );
 
@@ -207,8 +207,8 @@ CREATE TABLE IF NOT EXISTS caldav.calendar_property
 CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_file_uid     UUID                     NOT NULL,
-    component_type        BIT                      NOT NULL,
+    calendar_file_uid     UUID      NOT NULL,
+    component_type        BIT       NOT NULL,
     date_timestamp        TIMESTAMP NOT NULL,
     created_at            TIMESTAMP NOT NULL,
     last_modified_at      TIMESTAMP,
@@ -293,18 +293,18 @@ CREATE TABLE IF NOT EXISTS caldav.alarm
 
 CREATE TABLE IF NOT EXISTS caldav.recurrence
 (
-    id                         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id         BIGINT NOT NULL,
-    recur_interval             INT,
-    recur_until                DATE,
-    recur_count                INT,
-    recur_week_start           VARCHAR(50),
-    recur_by_day_mask          BIT(7),
-    recur_by_month_day_mask    VARCHAR(50),
-    recur_by_set_pos           VARCHAR(50),
-    recurrence_id_date         DATE,
-    recurrence_id_timezone_id  VARCHAR(255),
-    recurrence_this_and_future BIT,
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_component_id BIGINT NOT NULL,
+    interval           INT,
+    until              DATE,
+    count              INT,
+    week_start         SMALLINT,
+    by_day             SMALLINT,
+    by_month_day       BIGINT,
+    by_month           SMALLINT,
+    period_day         SMALLINT,
+    by_set_pos         INT[],
+    this_and_future    BIT,
     CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
 );
 

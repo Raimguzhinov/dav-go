@@ -7,6 +7,7 @@ import (
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/emersion/go-ical"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/teambition/rrule-go"
 )
 
 type Folder struct {
@@ -39,6 +40,151 @@ func (cp *CustomProp) ToDomain() *ical.Prop {
 	custom.SetValueType(ical.ValueType(cp.ParamName))
 	custom.Value = cp.Value
 	return custom
+}
+
+type RecurrenceSet struct {
+	Interval      pgtype.Uint32     `json:"interval,omitempty"`
+	Cnt           pgtype.Uint32     `json:"cnt,omitempty"`
+	Until         pgtype.Date       `json:"until,omitempty"`
+	Wkst          pgtype.Int2       `json:"wkst,omitempty"`
+	BySetPos      pgtype.Array[int] `json:"bySetPos,omitempty"`
+	Weekdays      pgtype.Int2       `json:"weekdays,omitempty"`
+	Monthdays     pgtype.Uint32     `json:"monthdays,omitempty"`
+	Months        pgtype.Int2       `json:"months,omitempty"`
+	PeriodDay     pgtype.Int2       `json:"periodDay,omitempty"`
+	ThisAndFuture pgtype.Text       `json:"thisAndFuture,omitempty"`
+}
+
+func ScanRecurrence(event *ical.Component) *RecurrenceSet {
+	recurrenceSet, err := event.RecurrenceSet(time.UTC)
+	if err != nil {
+		return nil
+	}
+
+	if recurrenceSet == nil {
+		return nil
+	}
+
+	rs := &RecurrenceSet{
+		Interval:      pgtype.Uint32{Valid: false},
+		Cnt:           pgtype.Uint32{Valid: false},
+		Until:         pgtype.Date{Valid: false},
+		Wkst:          pgtype.Int2{Valid: false},
+		BySetPos:      pgtype.Array[int]{Valid: false},
+		Weekdays:      pgtype.Int2{Valid: false},
+		Monthdays:     pgtype.Uint32{Valid: false},
+		Months:        pgtype.Int2{Valid: false},
+		PeriodDay:     pgtype.Int2{Valid: false},
+		ThisAndFuture: pgtype.Text{String: "1", Valid: true},
+	}
+
+	options := recurrenceSet.GetRRule().Options
+
+	if options.Interval != 0 {
+		rs.Interval = pgtype.Uint32{Uint32: uint32(options.Interval), Valid: true}
+	}
+	if options.Count != 0 {
+		rs.Cnt = pgtype.Uint32{Uint32: uint32(options.Count), Valid: true}
+	}
+	if !options.Until.IsZero() {
+		rs.Until = pgtype.Date{Time: options.Until, Valid: true}
+		rs.ThisAndFuture = pgtype.Text{String: "0", Valid: true}
+	}
+	if options.Wkst.String() != "" {
+		rs.Wkst = pgtype.Int2{Int16: int16(options.Wkst.Day()), Valid: true}
+	}
+	if options.Bysetpos != nil {
+		rs.BySetPos = pgtype.Array[int]{Elements: options.Bysetpos, Valid: true}
+	}
+
+	weekdays, periodDay, months, monthdays := getMasks(&options)
+
+	if weekdays != nil && *weekdays != 0 {
+		rs.Weekdays = pgtype.Int2{Int16: int16(*weekdays), Valid: true}
+	}
+	if periodDay != nil && *periodDay != 0 {
+		rs.PeriodDay = pgtype.Int2{Int16: int16(*periodDay), Valid: true}
+	}
+	if months != nil && *months != 0 {
+		rs.Months = pgtype.Int2{Int16: int16(*months), Valid: true}
+	}
+	if monthdays != nil && *monthdays != 0 {
+		rs.Monthdays = pgtype.Uint32{Uint32: uint32(*monthdays), Valid: true}
+	}
+
+	return rs
+}
+
+func getMasks(options *rrule.ROption) (*time.Weekday, *int, *time.Month, *int) {
+	var weekdays time.Weekday
+	var months time.Month
+	var monthdays int
+	var periodDay int
+
+	if options.Byweekday != nil {
+		for _, mask := range options.Byweekday {
+			if mask.Day()+1 == 7 {
+				weekdays |= 1 << time.Sunday
+				continue
+			}
+			weekdays |= 1 << (mask.Day() + 1)
+			periodDay = mask.N()
+		}
+	} else {
+		switch options.Freq {
+		case rrule.DAILY:
+			weekdays = 127
+		case rrule.WEEKLY:
+			weekdays |= 1 << options.Dtstart.Weekday()
+		default:
+		}
+	}
+
+	if options.Bymonth != nil {
+		for _, mask := range options.Bymonth {
+			months |= 1 << mask
+		}
+	}
+
+	if options.Bymonthday != nil {
+		for _, mask := range options.Bymonthday {
+			if mask < 1 || mask > 31 {
+				monthdays |= 1 << 0
+				continue
+			}
+			monthdays |= 1 << mask
+		}
+	}
+
+	//for i := time.Sunday; i <= time.Saturday; i++ {
+	//	if weekdays&time.Weekday(1<<i) != 0 {
+	//		r.logger.Debug("weekdays mask",
+	//			slog.String("weekdays", i.String()),
+	//			slog.Int("every", periodDay),
+	//		)
+	//	}
+	//}
+	//r.logger.Debug("Scanned weekdays mask", slog.Any("mask", weekdays))
+	//
+	//for i := time.January; i <= time.December; i++ {
+	//	if months&time.Month(1<<i) != 0 {
+	//		r.logger.Debug("months mask", slog.String("months", i.String()))
+	//	}
+	//}
+	//r.logger.Debug("Scanned months mask", slog.Any("mask", months))
+	//
+	//for i := 0; i <= 31; i++ {
+	//	if monthdays&int(1<<i) != 0 {
+	//		if i == 0 {
+	//			r.logger.Debug("monthday mask", slog.String("monthday", "Last day of months"))
+	//			continue
+	//		}
+	//		r.logger.Debug("monthday mask", slog.Int("monthday", i))
+	//	}
+	//}
+	//r.logger.Debug("Scanned monthday mask", slog.Any("mask", monthdays))
+
+	return &weekdays, &periodDay, &months, &monthdays
 }
 
 type Calendar struct {
