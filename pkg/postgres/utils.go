@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -20,4 +21,8 @@ func (p *Postgres) ToPgErr(err error) error {
 		)
 	}
 	return err
+}
+
+func (p *Postgres) IsNoRows(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
 }

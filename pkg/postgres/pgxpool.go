@@ -8,7 +8,6 @@ import (
 	"time"
 
 	adapter "github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,8 +23,7 @@ type Postgres struct {
 	connAttempts int
 	connTimeout  time.Duration
 
-	Pool  *pgxpool.Pool
-	Batch *pgx.Batch
+	Pool *pgxpool.Pool
 }
 
 // New -.
@@ -34,8 +32,6 @@ func New(ctx context.Context, logger *adapter.Logger, url string, opts ...Option
 		maxPoolSize:  _defaultMaxPoolSize,
 		connAttempts: _defaultConnAttempts,
 		connTimeout:  _defaultConnTimeout,
-
-		Batch: &pgx.Batch{},
 	}
 
 	// Custom options
