@@ -46,12 +46,12 @@ type RecurrenceSet struct {
 	Interval      pgtype.Uint32     `json:"interval,omitempty"`
 	Cnt           pgtype.Uint32     `json:"cnt,omitempty"`
 	Until         pgtype.Date       `json:"until,omitempty"`
-	Wkst          pgtype.Int2       `json:"wkst,omitempty"`
+	Wkst          pgtype.Uint32     `json:"wkst,omitempty"`
 	BySetPos      pgtype.Array[int] `json:"bySetPos,omitempty"`
-	Weekdays      pgtype.Int2       `json:"weekdays,omitempty"`
+	Weekdays      pgtype.Uint32     `json:"weekdays,omitempty"`
 	Monthdays     pgtype.Uint32     `json:"monthdays,omitempty"`
-	Months        pgtype.Int2       `json:"months,omitempty"`
-	PeriodDay     pgtype.Int2       `json:"periodDay,omitempty"`
+	Months        pgtype.Uint32     `json:"months,omitempty"`
+	PeriodDay     *int              `json:"periodDay,omitempty"`
 	ThisAndFuture pgtype.Text       `json:"thisAndFuture,omitempty"`
 }
 
@@ -65,16 +65,25 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 		return nil
 	}
 
+	standardDay := map[rrule.Weekday]time.Weekday{
+		rrule.SU: time.Sunday,
+		rrule.MO: time.Monday,
+		rrule.TU: time.Tuesday,
+		rrule.WE: time.Wednesday,
+		rrule.TH: time.Thursday,
+		rrule.FR: time.Friday,
+		rrule.SA: time.Saturday,
+	}
+
 	rs := &RecurrenceSet{
 		Interval:      pgtype.Uint32{Valid: false},
 		Cnt:           pgtype.Uint32{Valid: false},
 		Until:         pgtype.Date{Valid: false},
-		Wkst:          pgtype.Int2{Valid: false},
+		Wkst:          pgtype.Uint32{Valid: false},
 		BySetPos:      pgtype.Array[int]{Valid: false},
-		Weekdays:      pgtype.Int2{Valid: false},
+		Weekdays:      pgtype.Uint32{Valid: false},
 		Monthdays:     pgtype.Uint32{Valid: false},
-		Months:        pgtype.Int2{Valid: false},
-		PeriodDay:     pgtype.Int2{Valid: false},
+		Months:        pgtype.Uint32{Valid: false},
 		ThisAndFuture: pgtype.Text{String: "1", Valid: true},
 	}
 
@@ -91,22 +100,22 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 		rs.ThisAndFuture = pgtype.Text{String: "0", Valid: true}
 	}
 	if options.Wkst.String() != "" {
-		rs.Wkst = pgtype.Int2{Int16: int16(options.Wkst.Day()), Valid: true}
+		rs.Wkst = pgtype.Uint32{Uint32: uint32(standardDay[options.Wkst]), Valid: true}
 	}
 	if options.Bysetpos != nil {
 		rs.BySetPos = pgtype.Array[int]{Elements: options.Bysetpos, Valid: true}
 	}
 
-	weekdays, periodDay, months, monthdays := getMasks(&options)
+	weekdays, periodDay, months, monthdays := getMasks(&options, standardDay)
 
 	if weekdays != nil && *weekdays != 0 {
-		rs.Weekdays = pgtype.Int2{Int16: int16(*weekdays), Valid: true}
+		rs.Weekdays = pgtype.Uint32{Uint32: uint32(*weekdays), Valid: true}
 	}
 	if periodDay != nil && *periodDay != 0 {
-		rs.PeriodDay = pgtype.Int2{Int16: int16(*periodDay), Valid: true}
+		rs.PeriodDay = periodDay
 	}
 	if months != nil && *months != 0 {
-		rs.Months = pgtype.Int2{Int16: int16(*months), Valid: true}
+		rs.Months = pgtype.Uint32{Uint32: uint32(*months), Valid: true}
 	}
 	if monthdays != nil && *monthdays != 0 {
 		rs.Monthdays = pgtype.Uint32{Uint32: uint32(*monthdays), Valid: true}
@@ -115,7 +124,7 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 	return rs
 }
 
-func getMasks(options *rrule.ROption) (*time.Weekday, *int, *time.Month, *int) {
+func getMasks(options *rrule.ROption, standardDay map[rrule.Weekday]time.Weekday) (*time.Weekday, *int, *time.Month, *int) {
 	var weekdays time.Weekday
 	var months time.Month
 	var monthdays int
@@ -123,11 +132,7 @@ func getMasks(options *rrule.ROption) (*time.Weekday, *int, *time.Month, *int) {
 
 	if options.Byweekday != nil {
 		for _, mask := range options.Byweekday {
-			if mask.Day()+1 == 7 {
-				weekdays |= 1 << time.Sunday
-				continue
-			}
-			weekdays |= 1 << (mask.Day() + 1)
+			weekdays |= 1 << standardDay[mask]
 			periodDay = mask.N()
 		}
 	} else {
@@ -135,7 +140,7 @@ func getMasks(options *rrule.ROption) (*time.Weekday, *int, *time.Month, *int) {
 		case rrule.DAILY:
 			weekdays = 127
 		case rrule.WEEKLY:
-			weekdays |= 1 << options.Dtstart.Weekday()
+			weekdays |= 1 << options.Dtstart.UTC().Weekday()
 		default:
 		}
 	}
@@ -156,64 +161,109 @@ func getMasks(options *rrule.ROption) (*time.Weekday, *int, *time.Month, *int) {
 		}
 	}
 
-	//for i := time.Sunday; i <= time.Saturday; i++ {
-	//	if weekdays&time.Weekday(1<<i) != 0 {
-	//		r.logger.Debug("weekdays mask",
-	//			slog.String("weekdays", i.String()),
-	//			slog.Int("every", periodDay),
-	//		)
-	//	}
-	//}
-	//r.logger.Debug("Scanned weekdays mask", slog.Any("mask", weekdays))
-	//
-	//for i := time.January; i <= time.December; i++ {
-	//	if months&time.Month(1<<i) != 0 {
-	//		r.logger.Debug("months mask", slog.String("months", i.String()))
-	//	}
-	//}
-	//r.logger.Debug("Scanned months mask", slog.Any("mask", months))
-	//
-	//for i := 0; i <= 31; i++ {
-	//	if monthdays&int(1<<i) != 0 {
-	//		if i == 0 {
-	//			r.logger.Debug("monthday mask", slog.String("monthday", "Last day of months"))
-	//			continue
-	//		}
-	//		r.logger.Debug("monthday mask", slog.Int("monthday", i))
-	//	}
-	//}
-	//r.logger.Debug("Scanned monthday mask", slog.Any("mask", monthdays))
-
 	return &weekdays, &periodDay, &months, &monthdays
 }
 
+func (rs *RecurrenceSet) ToDomain() *rrule.ROption {
+	ro := rrule.ROption{Freq: rrule.SECONDLY}
+
+	rruleDay := map[time.Weekday]rrule.Weekday{
+		time.Sunday:    rrule.SU,
+		time.Monday:    rrule.MO,
+		time.Tuesday:   rrule.TU,
+		time.Wednesday: rrule.WE,
+		time.Thursday:  rrule.TH,
+		time.Friday:    rrule.FR,
+		time.Saturday:  rrule.SA,
+	}
+
+	if rs.Interval.Valid {
+		ro.Interval = int(rs.Interval.Uint32)
+	}
+	if rs.Cnt.Valid {
+		ro.Count = int(rs.Cnt.Uint32)
+	}
+	if rs.Until.Valid {
+		ro.Until = rs.Until.Time
+	}
+	if rs.BySetPos.Valid {
+		ro.Bysetpos = rs.BySetPos.Elements
+	}
+	if rs.Wkst.Valid {
+		ro.Wkst = rruleDay[time.Weekday(rs.Wkst.Uint32)]
+	}
+	if rs.Weekdays.Valid {
+		if rs.Weekdays.Uint32 == 127 {
+			ro.Freq = rrule.DAILY
+		} else {
+			ro.Freq = rrule.WEEKLY
+			for i := time.Sunday; i <= time.Saturday; i++ {
+				if rs.Weekdays.Uint32&uint32(time.Weekday(1<<i)) != 0 {
+					weekday := rruleDay[i]
+					if rs.PeriodDay == nil {
+						ro.Byweekday = append(ro.Byweekday, weekday)
+						continue
+					}
+					ro.Byweekday = append(ro.Byweekday, weekday.Nth(*rs.PeriodDay))
+				}
+			}
+		}
+	}
+	if rs.Monthdays.Valid {
+		ro.Freq |= rrule.MONTHLY
+		for i := 0; i <= 31; i++ {
+			if rs.Monthdays.Uint32&uint32(1<<i) != 0 {
+				if i == 0 {
+					ro.Bymonthday = append(ro.Bymonthday, -1)
+					continue
+				}
+				ro.Bymonthday = append(ro.Bymonthday, i)
+			}
+		}
+	}
+	if rs.Months.Valid {
+		ro.Freq |= rrule.YEARLY
+		for i := time.January; i <= time.December; i++ {
+			if rs.Months.Uint32&uint32(time.Month(1<<i)) != 0 {
+				ro.Bymonth = append(ro.Bymonth, int(i))
+			}
+		}
+	}
+
+	if ro.Freq == rrule.SECONDLY {
+		return nil
+	}
+	return &ro
+}
+
 type Calendar struct {
-	Version      string           `json:"version"`
-	Product      string           `json:"product"`
-	CompTypeBit  pgtype.Text      `json:"compTypeBit,omitempty"`
-	Transparent  pgtype.Text      `json:"transparent,omitempty"`
-	AllDay       pgtype.Text      `json:"allDay,omitempty"`
-	Scale        pgtype.Text      `json:"scale,omitempty"`
-	Method       pgtype.Text      `json:"method,omitempty"`
-	Summary      pgtype.Text      `json:"summary,omitempty"`
-	Description  pgtype.Text      `json:"description,omitempty"`
-	Url          pgtype.Text      `json:"url,omitempty"`
-	Organizer    pgtype.Text      `json:"organizer,omitempty"`
-	Class        pgtype.Text      `json:"class,omitempty"`
-	Loc          pgtype.Text      `json:"loc,omitempty"`
-	Status       pgtype.Text      `json:"status,omitempty"`
-	Categories   pgtype.Text      `json:"categories,omitempty"`
-	Timestamp    pgtype.Timestamp `json:"timestamp,omitempty"`
-	Created      pgtype.Timestamp `json:"created,omitempty"`
-	LastModified pgtype.Timestamp `json:"lastModified,omitempty"`
-	Start        pgtype.Timestamp `json:"start,omitempty"`
-	End          pgtype.Timestamp `json:"end,omitempty"`
-	Duration     pgtype.Uint32    `json:"duration,omitempty"`
-	Priority     pgtype.Uint32    `json:"priority,omitempty"`
-	Sequence     pgtype.Uint32    `json:"sequence,omitempty"`
-	Completed    pgtype.Uint32    `json:"completed,omitempty"`
-	PerCompleted pgtype.Uint32    `json:"perCompleted,omitempty"`
-	CustomProps  []CustomProp     `json:"customProps,omitempty"`
+	Version       string           `json:"version"`
+	Product       string           `json:"product"`
+	CompTypeBit   pgtype.Text      `json:"compTypeBit,omitempty"`
+	Transparent   pgtype.Text      `json:"transparent,omitempty"`
+	AllDay        pgtype.Text      `json:"allDay,omitempty"`
+	Scale         pgtype.Text      `json:"scale,omitempty"`
+	Method        pgtype.Text      `json:"method,omitempty"`
+	Summary       pgtype.Text      `json:"summary,omitempty"`
+	Description   pgtype.Text      `json:"description,omitempty"`
+	Url           pgtype.Text      `json:"url,omitempty"`
+	Organizer     pgtype.Text      `json:"organizer,omitempty"`
+	Class         pgtype.Text      `json:"class,omitempty"`
+	Loc           pgtype.Text      `json:"loc,omitempty"`
+	Status        pgtype.Text      `json:"status,omitempty"`
+	Categories    pgtype.Text      `json:"categories,omitempty"`
+	Timestamp     pgtype.Timestamp `json:"timestamp,omitempty"`
+	Created       pgtype.Timestamp `json:"created,omitempty"`
+	LastModified  pgtype.Timestamp `json:"lastModified,omitempty"`
+	Start         pgtype.Timestamp `json:"start,omitempty"`
+	End           pgtype.Timestamp `json:"end,omitempty"`
+	Duration      pgtype.Uint32    `json:"duration,omitempty"`
+	Priority      pgtype.Uint32    `json:"priority,omitempty"`
+	Sequence      pgtype.Uint32    `json:"sequence,omitempty"`
+	Completed     pgtype.Uint32    `json:"completed,omitempty"`
+	PerCompleted  pgtype.Uint32    `json:"perCompleted,omitempty"`
+	CustomProps   []CustomProp     `json:"customProps,omitempty"`
+	RecurrenceSet *RecurrenceSet   `json:"recurrenceSet,omitempty"`
 }
 
 func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
@@ -354,6 +404,12 @@ func (c *Calendar) ToDomain(uid string) *ical.Calendar {
 
 	for _, custom := range c.CustomProps {
 		calEvent.Props.Set(custom.ToDomain())
+	}
+
+	rs := c.RecurrenceSet.ToDomain()
+	if rs != nil {
+		rs.Dtstart = c.Start.Time
+		calEvent.Props.SetRecurrenceRule(rs)
 	}
 
 	cal := ical.NewCalendar()

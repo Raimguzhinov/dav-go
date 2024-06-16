@@ -87,14 +87,14 @@ CREATE TABLE IF NOT EXISTS caldav.custom_property
     parameter_name    VARCHAR(50),
     value             VARCHAR(512) NOT NULL,
     CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
-    CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES caldav.event_component (id)
+    CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES caldav.event_component (id),
+    UNIQUE (calendar_file_uid, parent_id, prop_name)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attachment
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT NOT NULL,
-    uid                UUID   NOT NULL,
+    event_component_id BIGINT NOT NULL UNIQUE,
     media_type         VARCHAR(255),
     external_url       TEXT,
     content            BYTEA,
@@ -104,8 +104,7 @@ CREATE TABLE IF NOT EXISTS caldav.attachment
 CREATE TABLE IF NOT EXISTS caldav.attendee
 (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id   BIGINT NOT NULL,
-    uid                  UUID   NOT NULL,
+    event_component_id   BIGINT NOT NULL UNIQUE,
     email                VARCHAR(255),
     common_name          VARCHAR(50),
     directory_entry_ref  TEXT,
@@ -123,8 +122,7 @@ CREATE TABLE IF NOT EXISTS caldav.attendee
 CREATE TABLE IF NOT EXISTS caldav.alarm
 (
     id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id        BIGINT      NOT NULL,
-    uid                       UUID        NOT NULL,
+    event_component_id        BIGINT      NOT NULL UNIQUE,
     action                    VARCHAR(15) NOT NULL,
     trigger_absolute_datetime DATE,
     trigger_relative_offset   BIGINT,
@@ -139,7 +137,7 @@ CREATE TABLE IF NOT EXISTS caldav.alarm
 CREATE TABLE IF NOT EXISTS caldav.recurrence
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT NOT NULL,
+    event_component_id BIGINT NOT NULL UNIQUE,
     interval           INT,
     until              DATE,
     count              INT,
@@ -156,10 +154,8 @@ CREATE TABLE IF NOT EXISTS caldav.recurrence
 CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    recurrence_id  BIGINT NOT NULL,
-    uid            UUID   NOT NULL,
+    recurrence_id  BIGINT NOT NULL UNIQUE,
     exception_date DATE   NOT NULL,
-    timezone_id    VARCHAR(255),
     all_day        BIT    NOT NULL,
     CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES caldav.recurrence (id)
 );

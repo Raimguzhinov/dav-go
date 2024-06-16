@@ -169,16 +169,24 @@ func (r *repository) PutObject(
 	}
 
 	eg := errgroup.Group{}
+	batch := r.client.NewBatch()
 
 	for _, child := range object.Data.Component.Children {
 		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
 			eg.Go(func() error {
-				return r.createEvent(ctx, tx, uid, wantSeq, child)
+				return r.createEvent(ctx, tx, batch, uid, wantSeq, child)
 			})
 		}
 	}
 
 	if err = eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	res := tx.SendBatch(ctx, batch.Batch)
+	if err := res.Close(); err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.createEvent send batch", logger.Err(err))
 		return nil, err
 	}
 
@@ -193,6 +201,7 @@ func (r *repository) PutObject(
 func (r *repository) createEvent(
 	ctx context.Context,
 	tx *postgres.Tx,
+	batch *postgres.Batch,
 	uid string,
 	wantSequence int,
 	event *ical.Component,
@@ -206,14 +215,14 @@ func (r *repository) createEvent(
 	err := tx.QueryRow(ctx, `
 		INSERT INTO caldav.event_component
 		(
-			calendar_file_uid, 
+			calendar_file_uid,
 			component_type,
 			date_timestamp,
 			created_at,
 			last_modified_at,
 			summary,
 			description,
-		 	url,
+			url,
 			organizer,
 			start_date,
 			end_date,
@@ -280,19 +289,20 @@ func (r *repository) createEvent(
 	}
 	r.logger.Debug("Scanned custom prop", slog.Any("prop", customProps))
 
-	var batch = r.client.Batch
-
 	for _, cp := range customProps {
 		batch.Queue(`
 			INSERT INTO caldav.custom_property
 			(
-				parent_id,
 			 	calendar_file_uid,
+				parent_id,
 				prop_name,
 				parameter_name,
 				value
 			) VALUES ($1, $2, $3, $4, $5)
-		`, cp.ParentID, uid, cp.Name, cp.ParamName, cp.Value)
+			ON CONFLICT (calendar_file_uid, parent_id, prop_name) DO UPDATE SET
+				parameter_name = EXCLUDED.parameter_name,
+				value = EXCLUDED.value
+		`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
 	}
 
 	if rs := ScanRecurrence(event); rs != nil {
@@ -311,17 +321,20 @@ func (r *repository) createEvent(
 				by_set_pos,
 				this_and_future
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			ON CONFLICT (event_component_id) DO UPDATE SET
+				interval = EXCLUDED.interval,
+				until = EXCLUDED.until,
+				count = EXCLUDED.count,
+				week_start = EXCLUDED.week_start,
+				by_day = EXCLUDED.by_day,
+				by_month_day = EXCLUDED.by_month_day,
+				by_month = EXCLUDED.by_month,
+				period_day = EXCLUDED.period_day,
+				by_set_pos = EXCLUDED.by_set_pos,
+				this_and_future = EXCLUDED.this_and_future
 		`, parentID, rs.Interval, rs.Until, rs.Cnt, rs.Wkst, rs.Weekdays,
 			rs.Monthdays, rs.Months, rs.PeriodDay, rs.BySetPos, rs.ThisAndFuture,
 		)
-	}
-
-	res := tx.SendBatch(ctx, batch)
-
-	if err := res.Close(); err != nil {
-		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.createEvent", logger.Err(err))
-		return err
 	}
 
 	return nil
@@ -414,6 +427,35 @@ func (r *repository) GetCalendar(
 		}
 		cal.CustomProps = append(cal.CustomProps, prop)
 	}
+
+	var rs RecurrenceSet
+	err = r.client.Pool.QueryRow(ctx, `
+		SELECT
+			interval,
+			until,
+			count,
+			week_start,
+			by_day,
+			by_month_day,
+			by_month,
+			period_day,
+			by_set_pos
+		FROM
+			caldav.recurrence
+		WHERE
+			event_component_id = $1
+	`, eventID).Scan(
+		&rs.Interval, &rs.Until, &rs.Cnt, &rs.Wkst, &rs.Weekdays,
+		&rs.Monthdays, &rs.Months, &rs.PeriodDay, &rs.BySetPos,
+	)
+	if err != nil {
+		if !r.client.IsNoRows(err) {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.GetCalendar", logger.Err(err))
+			return nil, err
+		}
+	}
+	cal.RecurrenceSet = &rs
 
 	return cal.ToDomain(uid), nil
 }
