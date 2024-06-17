@@ -10,69 +10,64 @@ CREATE TYPE carddav.address_data_type AS
 
 CREATE TABLE IF NOT EXISTS carddav.addressbook_folder
 (
-    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    uid                    UUID PRIMARY KEY,
     name                   VARCHAR(50) NOT NULL,
     description            TEXT                        DEFAULT NULL,
     max_resource_size      INT                         DEFAULT 4096,
-    supported_address_data carddav.address_data_type[] DEFAULT NULL
+    supported_address_data carddav.address_data_type[] DEFAULT ARRAY [ROW ('text/vcard', '3.0'), ROW ('text/vcard', '4.0')]::carddav.address_data_type[]
 );
-
-INSERT INTO carddav.addressbook_folder
-    (name, description, max_resource_size, supported_address_data)
-VALUES ('My Contacts', 'Default Address Book', 4096,
-        ARRAY [ROW ('text/vcard', '3.0'), ROW ('text/vcard', '4.0')]::carddav.address_data_type[]);
 
 CREATE TABLE IF NOT EXISTS carddav.access
 (
-    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    addressbook_folder_id BIGINT      NOT NULL,
-    user_id               VARCHAR(50) NOT NULL,
-    owner                 BIT         NOT NULL,
-    read                  BIT         NOT NULL,
-    write                 BIT         NOT NULL,
-    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    addressbook_folder_uid UUID        NOT NULL,
+    user_id                VARCHAR(50) NOT NULL,
+    owner                  BIT         NOT NULL,
+    read                   BIT         NOT NULL,
+    write                  BIT         NOT NULL,
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_uid) REFERENCES carddav.addressbook_folder (uid)
 );
 
 CREATE TABLE IF NOT EXISTS carddav.card_file
 (
-    uid                   UUID PRIMARY KEY,
-    addressbook_folder_id BIGINT       NOT NULL,
-    file_name             VARCHAR(255) NOT NULL,
-    etag                  TIMESTAMP    NOT NULL,
-    created_at            TIMESTAMP    NOT NULL,
-    modified_at           TIMESTAMP    NOT NULL,
-    version               VARCHAR(5)   NOT NULL,
-    formatted_name        VARCHAR(100) NOT NULL,
-    family_name           VARCHAR(100) NOT NULL,
-    given_name            VARCHAR(100) NOT NULL,
-    additional_names      VARCHAR(100) NOT NULL,
-    honorific_prefix      VARCHAR(10)  NOT NULL,
-    honorific_suffix      VARCHAR(10)  NOT NULL,
-    product               VARCHAR(100),
-    kind                  VARCHAR(10),
-    nickname              VARCHAR(50),
-    photo                 BYTEA,
-    photo_media_type      VARCHAR(10),
-    logo                  BYTEA,
-    logo_media_type       VARCHAR(10),
-    sound                 BYTEA,
-    sound_media_type      VARCHAR(10),
-    birthday              DATE,
-    anniversary           DATE,
-    gender                VARCHAR(1),
-    revision_at           TIMESTAMP,
-    sort_string           VARCHAR(100),
-    language              VARCHAR(50),
-    timezone              VARCHAR(50),
-    geo                   POINT,
-    title                 TEXT,
-    role                  VARCHAR(50),
-    org_name              VARCHAR(100),
-    org_unit              VARCHAR(50),
-    categories            VARCHAR(50),
-    note                  TEXT,
-    classification        VARCHAR(50),
-    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_id) REFERENCES carddav.addressbook_folder (id)
+    uid                    UUID PRIMARY KEY,
+    addressbook_folder_uid UUID         NOT NULL,
+    file_name              VARCHAR(255) NOT NULL,
+    etag                   TIMESTAMP    NOT NULL,
+    created_at             TIMESTAMP    NOT NULL,
+    modified_at            TIMESTAMP    NOT NULL,
+    version                VARCHAR(5)   NOT NULL,
+    formatted_name         VARCHAR(100) NOT NULL,
+    family_name            VARCHAR(100) NOT NULL,
+    given_name             VARCHAR(100) NOT NULL,
+    additional_names       VARCHAR(100) NOT NULL,
+    honorific_prefix       VARCHAR(10)  NOT NULL,
+    honorific_suffix       VARCHAR(10)  NOT NULL,
+    product                VARCHAR(100),
+    kind                   VARCHAR(10),
+    nickname               VARCHAR(50),
+    photo                  BYTEA,
+    photo_media_type       VARCHAR(10),
+    logo                   BYTEA,
+    logo_media_type        VARCHAR(10),
+    sound                  BYTEA,
+    sound_media_type       VARCHAR(10),
+    birthday               DATE,
+    anniversary            DATE,
+    gender                 VARCHAR(1),
+    revision_at            TIMESTAMP,
+    sort_string            VARCHAR(100),
+    language               VARCHAR(50),
+    timezone               VARCHAR(50),
+    geo                    POINT,
+    title                  TEXT,
+    role                   VARCHAR(50),
+    org_name               VARCHAR(100),
+    org_unit               VARCHAR(50),
+    categories             VARCHAR(50),
+    note                   TEXT,
+    classification         VARCHAR(50),
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_uid) REFERENCES carddav.addressbook_folder (uid)
 );
 
 CREATE INDEX ON carddav.card_file USING GIST (geo);

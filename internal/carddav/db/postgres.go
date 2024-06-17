@@ -2,14 +2,14 @@ package carddav_db
 
 import (
 	"context"
-	"path"
 	"regexp"
-	"strconv"
+	"strings"
 
 	backend "github.com/Raimguhinov/dav-go/internal/carddav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav/carddav"
+	"github.com/google/uuid"
 )
 
 type repository struct {
@@ -25,8 +25,8 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 }
 
 type folder struct {
-	ID    int      `json:"id"`
-	Types []string `json:"types"`
+	Uid   uuid.UUID `json:"uid"`
+	Types []string  `json:"types"`
 }
 
 func (f *folder) ParseTypes() ([]carddav.AddressDataType, error) {
@@ -45,35 +45,39 @@ func (f *folder) ParseTypes() ([]carddav.AddressDataType, error) {
 func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, addressbook *carddav.AddressBook) error {
 	var f folder
 
-	err := r.client.Pool.QueryRow(ctx, `
+	abUid, err := uuid.Parse(strings.TrimSuffix(strings.TrimPrefix(addressbook.Path, homeSetPath), "/"))
+	if err != nil {
+		return err
+	}
+
+	err = r.client.Pool.QueryRow(ctx, `
 		INSERT INTO carddav.addressbook_folder
-			(name, description, max_resource_size, supported_address_data)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id
-	`, addressbook.Name, addressbook.Description, addressbook.MaxResourceSize, addressbook.SupportedAddressData).Scan(&f.ID)
+			(uid, name, description)
+		VALUES ($1, $2, $3)
+		RETURNING uid
+	`, abUid, addressbook.Name, addressbook.Description).Scan(&f.Uid)
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.CreateFolder", logger.Err(err))
 		return err
 	}
-	addressbook.Path = path.Join(homeSetPath, strconv.Itoa(f.ID), "/")
 	return nil
 }
 
-func (r *repository) FindFolders(ctx context.Context) ([]carddav.AddressBook, error) {
+func (r *repository) FindFolders(ctx context.Context, homeSetPath string) ([]carddav.AddressBook, error) {
 	rows, err := r.client.Pool.Query(ctx, `
 		SELECT
-			f.id,
+			f.uid,
 			f.name,
-    		COALESCE(f.description, '') as description,
+			COALESCE(f.description, '') as description,
 			f.max_resource_size AS size,
 			array_agg(f.supported_address_data) AS types
 		FROM
 			carddav.addressbook_folder f
 		GROUP BY
-			f.id, f.name, f.description
+			f.uid, f.name
 		ORDER BY
-			f.id; 
+			f.uid
 		`)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -86,13 +90,13 @@ func (r *repository) FindFolders(ctx context.Context) ([]carddav.AddressBook, er
 	for rows.Next() {
 		var addressbook carddav.AddressBook
 
-		err = rows.Scan(&f.ID, &addressbook.Name, &addressbook.Description, &addressbook.MaxResourceSize, &f.Types)
+		err = rows.Scan(&f.Uid, &addressbook.Name, &addressbook.Description, &addressbook.MaxResourceSize, &f.Types)
 		if err != nil {
 			err = r.client.ToPgErr(err)
 			return nil, err
 		}
 
-		addressbook.Path = strconv.Itoa(f.ID)
+		addressbook.Path = f.Uid.String()
 		addressbook.SupportedAddressData, err = f.ParseTypes()
 		if err != nil {
 			return nil, err
@@ -104,17 +108,26 @@ func (r *repository) FindFolders(ctx context.Context) ([]carddav.AddressBook, er
 }
 
 func (r *repository) DeleteFolder(ctx context.Context, addressbook *carddav.AddressBook) error {
-	panic("TODO")
+	//panic("TODO")
+	return nil
 }
 
-func (r *repository) PutObject(ctx context.Context, uid string, object *carddav.AddressObject, opts *carddav.PutAddressObjectOptions) (string, error) {
-	panic("TODO")
+func (r *repository) PutAddressObject(ctx context.Context, object *carddav.AddressObject, opts *carddav.PutAddressObjectOptions) (string, error) {
+	//panic("TODO")
+	return "", nil
 }
 
-func (r *repository) CreateContact(ctx context.Context, addressbook *carddav.AddressBook) error {
-	panic("TODO")
+func (r *repository) FindAddressObjects(ctx context.Context) ([]carddav.AddressObject, error) {
+	//panic("TODO")
+	return nil, nil
 }
 
-func (r *repository) FindContacts(ctx context.Context) ([]carddav.AddressObject, error) {
-	panic("TODO")
+func (r *repository) DeleteAddressObject(ctx context.Context, path string) error {
+	//panic("TODO")
+	return nil
+}
+
+func (r *repository) GetFolderAccess(ctx context.Context, addressbook *carddav.AddressBook) ([]string, error) {
+	//panic("TODO")
+	return nil, nil
 }
