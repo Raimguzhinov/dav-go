@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
+	"github.com/Raimguhinov/dav-go/internal/caldav/db/models"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/Raimguhinov/dav-go/pkg/utils"
@@ -33,7 +34,7 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
 	r.logger.Debug("postgres.CreateFolder")
 
-	var f Folder
+	var f models.Folder
 
 	err := r.client.Pool.QueryRow(ctx, `
 		INSERT INTO caldav.calendar_folder
@@ -73,7 +74,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		return nil, err
 	}
 
-	var f Folder
+	var f models.Folder
 	var calendars []caldav.Calendar
 
 	for rows.Next() {
@@ -137,11 +138,11 @@ func (r *repository) PutObject(
 		}
 	}
 
-	var cal Calendar
-	var folder Folder
+	var cal models.Calendar
+	var f models.Folder
 
 	folderDir, _ := path.Split(object.Path)
-	folder.ID, err = strconv.Atoi(path.Base(folderDir))
+	f.ID, err = strconv.Atoi(path.Base(folderDir))
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +169,7 @@ func (r *repository) PutObject(
 	_, err = tx.Exec(
 		ctx, `
 		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, uid, eventType, folder.ID, object.ETag, wantEtag, object.ModTime, object.ContentLength,
+	`, uid, eventType, f.ID, object.ETag, wantEtag, object.ModTime, object.ContentLength,
 		cal.Version, cal.Product, ifNoneMatch, ifMatch,
 	)
 	if err != nil {
@@ -221,7 +222,7 @@ func (r *repository) createEvent(
 
 	var parentID int
 
-	e := ScanEvent(event, wantSequence)
+	e := models.ScanEvent(event, wantSequence)
 
 	err := tx.QueryRow(ctx, `
 		INSERT INTO caldav.event_component
@@ -285,7 +286,7 @@ func (r *repository) createEvent(
 		return err
 	}
 
-	if rs := ScanRecurrence(event); rs != nil {
+	if rs := models.ScanRecurrence(event); rs != nil {
 		var recurrenceID int
 
 		err := tx.QueryRow(ctx, `
@@ -344,7 +345,7 @@ func (r *repository) createEvent(
 		ov.Set(recurrenceID)
 	}
 
-	if ex := ScanRecurrenceException(event); ex != nil {
+	if ex := models.ScanRecurrenceException(event); ex != nil {
 		for {
 			r.logger.Debug("getting recurrence id...")
 
@@ -371,10 +372,10 @@ func (r *repository) createEvent(
 		}
 	}
 
-	var customProps []CustomProp
+	var customProps []models.CustomProp
 	for k, v := range event.Props {
 		if strings.HasPrefix(k, "X-") {
-			var custom CustomProp
+			var custom models.CustomProp
 
 			custom.ParentID = parentID
 			custom.Name = v[0].Name
@@ -412,7 +413,7 @@ func (r *repository) GetCalendar(
 ) (*ical.Calendar, error) {
 	r.logger.Debug("postgres.GetCalendar")
 
-	var cal Calendar
+	var cal models.Calendar
 	isNotDeletedExceptions := make(map[int]string)
 
 	if err := r.client.Pool.QueryRow(ctx, `
@@ -463,7 +464,7 @@ func (r *repository) GetCalendar(
 	}
 
 	for rows.Next() {
-		var event Event
+		var event models.Event
 		var eventID int
 
 		if err := rows.Scan(
@@ -495,7 +496,7 @@ func (r *repository) GetCalendar(
 		}
 
 		for subrows.Next() {
-			var prop CustomProp
+			var prop models.CustomProp
 
 			err = subrows.Scan(
 				&prop.Name,
@@ -510,7 +511,7 @@ func (r *repository) GetCalendar(
 			event.CustomProps = append(event.CustomProps, prop)
 		}
 
-		var rs RecurrenceSet
+		var rs models.RecurrenceSet
 		var recurrenceID int
 
 		err = r.client.Pool.QueryRow(ctx, `
@@ -559,7 +560,7 @@ func (r *repository) GetCalendar(
 		}
 
 		for subrows.Next() {
-			var ex RecurrenceException
+			var ex models.RecurrenceException
 			var exEventID int
 
 			err = subrows.Scan(
@@ -571,9 +572,9 @@ func (r *repository) GetCalendar(
 				return nil, err
 			}
 
-			if ex.IsDeleted == BitTrue {
+			if ex.IsDeleted == models.BitIsSet {
 				rs.Exceptions = append(rs.Exceptions, &ex)
-			} else if ex.IsDeleted == BitNone {
+			} else if ex.IsDeleted == models.BitNone {
 				isNotDeletedExceptions[exEventID] = ex.ToDomain()
 			}
 		}
