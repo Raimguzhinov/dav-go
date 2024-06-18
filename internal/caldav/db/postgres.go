@@ -11,6 +11,7 @@ import (
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/Raimguhinov/dav-go/pkg/utils"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/emersion/go-ical"
@@ -135,13 +136,21 @@ func (r *repository) PutObject(
 			return nil, webdav.NewHTTPError(http.StatusBadRequest, err)
 		}
 	}
+
+	var cal Calendar
+	var folder Folder
+
 	folderDir, _ := path.Split(object.Path)
-	folderID := path.Base(folderDir)
-	version, err := object.Data.Component.Props.Text(ical.PropVersion)
+	folder.ID, err = strconv.Atoi(path.Base(folderDir))
 	if err != nil {
 		return nil, err
 	}
-	prodID, err := object.Data.Component.Props.Text(ical.PropProductID)
+
+	cal.Version, err = object.Data.Component.Props.Text(ical.PropVersion)
+	if err != nil {
+		return nil, err
+	}
+	cal.Product, err = object.Data.Component.Props.Text(ical.PropProductID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +168,8 @@ func (r *repository) PutObject(
 	_, err = tx.Exec(
 		ctx, `
 		CALL caldav.create_or_update_calendar_file($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, uid, eventType, folderID, object.ETag, wantEtag, object.ModTime, object.ContentLength,
-		version, prodID, ifNoneMatch, ifMatch,
+	`, uid, eventType, folder.ID, object.ETag, wantEtag, object.ModTime, object.ContentLength,
+		cal.Version, cal.Product, ifNoneMatch, ifMatch,
 	)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -170,11 +179,12 @@ func (r *repository) PutObject(
 
 	eg := errgroup.Group{}
 	batch := r.client.NewBatch()
+	ov := utils.NewOnceValue()
 
 	for _, child := range object.Data.Component.Children {
 		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
 			eg.Go(func() error {
-				return r.createEvent(ctx, tx, batch, uid, wantSeq, child)
+				return r.createEvent(ctx, tx, batch, uid, wantSeq, ov, child)
 			})
 		}
 	}
@@ -204,13 +214,14 @@ func (r *repository) createEvent(
 	batch *postgres.Batch,
 	uid string,
 	wantSequence int,
+	ov *utils.OnceValue,
 	event *ical.Component,
 ) error {
 	r.logger.Debug("postgres.createEvent")
 
 	var parentID int
 
-	cal := ScanEvent(event, wantSequence)
+	e := ScanEvent(event, wantSequence)
 
 	err := tx.QueryRow(ctx, `
 		INSERT INTO caldav.event_component
@@ -260,13 +271,13 @@ func (r *repository) createEvent(
 			todo_completed = EXCLUDED.todo_completed,
 			todo_percent_complete = EXCLUDED.todo_percent_complete
 		RETURNING id
-	`, uid, cal.CompTypeBit,
-		cal.Timestamp, cal.Created, cal.LastModified,
-		cal.Summary, cal.Description, cal.Url, cal.Organizer,
-		cal.Start, cal.End,
-		cal.Duration, cal.AllDay, cal.Class, cal.Loc, cal.Priority,
-		cal.Sequence, cal.Status, cal.Categories, cal.Transparent,
-		cal.Completed, cal.PerCompleted,
+	`, uid, e.CompTypeBit,
+		e.Timestamp, e.Created, e.LastModified,
+		e.Summary, e.Description, e.Url, e.Organizer,
+		e.Start, e.End,
+		e.Duration, e.AllDay, e.Class, e.Loc, e.Priority,
+		e.Sequence, e.Status, e.Categories, e.Transparent,
+		e.Completed, e.PerCompleted,
 	).Scan(&parentID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -274,39 +285,10 @@ func (r *repository) createEvent(
 		return err
 	}
 
-	var customProps []CustomProp
-	for k, v := range event.Props {
-		if strings.HasPrefix(k, "X-") {
-			var custom CustomProp
-
-			custom.ParentID = parentID
-			custom.Name = v[0].Name
-			custom.ParamName = string(v[0].ValueType())
-			custom.Value = v[0].Value
-
-			customProps = append(customProps, custom)
-		}
-	}
-	r.logger.Debug("Scanned custom prop", slog.Any("prop", customProps))
-
-	for _, cp := range customProps {
-		batch.Queue(`
-			INSERT INTO caldav.custom_property
-			(
-			 	calendar_file_uid,
-				parent_id,
-				prop_name,
-				parameter_name,
-				value
-			) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (calendar_file_uid, parent_id, prop_name) DO UPDATE SET
-				parameter_name = EXCLUDED.parameter_name,
-				value = EXCLUDED.value
-		`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
-	}
-
 	if rs := ScanRecurrence(event); rs != nil {
-		batch.Queue(`
+		var recurrenceID int
+
+		err := tx.QueryRow(ctx, `
 			INSERT INTO caldav.recurrence
 			(
 				event_component_id,
@@ -332,9 +314,92 @@ func (r *repository) createEvent(
 				period_day = EXCLUDED.period_day,
 				by_set_pos = EXCLUDED.by_set_pos,
 				this_and_future = EXCLUDED.this_and_future
+			RETURNING id
 		`, parentID, rs.Interval, rs.Until, rs.Cnt, rs.Wkst, rs.Weekdays,
 			rs.Monthdays, rs.Months, rs.PeriodDay, rs.BySetPos, rs.ThisAndFuture,
-		)
+		).Scan(&recurrenceID)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.createEvent", logger.Err(err))
+			return err
+		}
+
+		if rs.Exceptions != nil {
+			for _, ex := range rs.Exceptions {
+				batch.Queue(`
+					INSERT INTO caldav.recurrence_exception
+					(
+						event_component_id,
+						recurrence_id,
+						exception_date,
+						deleted_recurrence
+					) VALUES ($1, $2, $3, $4)
+					ON CONFLICT (recurrence_id, exception_date) DO UPDATE SET
+				exception_date = EXCLUDED.exception_date,
+				deleted_recurrence = EXCLUDED.deleted_recurrence
+				`, parentID, recurrenceID, ex.Value, "1")
+			}
+		}
+
+		ov.Set(recurrenceID)
+	}
+
+	if ex := ScanRecurrenceException(event); ex != nil {
+		for {
+			r.logger.Debug("getting recurrence id...")
+
+			val := ov.Get()
+			if val != nil {
+				recurrenceID := val.(int)
+
+				r.logger.Debug("got recurrence id", slog.Int("recurrence_id", recurrenceID))
+				batch.Queue(`
+					INSERT INTO caldav.recurrence_exception
+					(
+						event_component_id,
+						recurrence_id,
+						exception_date,
+						deleted_recurrence
+					) VALUES ($1, $2, $3, $4)
+					ON CONFLICT (recurrence_id, exception_date) DO UPDATE SET
+						exception_date = EXCLUDED.exception_date,
+						deleted_recurrence = EXCLUDED.deleted_recurrence
+				`, parentID, recurrenceID, ex.Value, "0")
+
+				break
+			}
+		}
+	}
+
+	var customProps []CustomProp
+	for k, v := range event.Props {
+		if strings.HasPrefix(k, "X-") {
+			var custom CustomProp
+
+			custom.ParentID = parentID
+			custom.Name = v[0].Name
+			custom.ParamName = string(v[0].ValueType())
+			custom.Value = v[0].Value
+
+			customProps = append(customProps, custom)
+		}
+	}
+	r.logger.Debug("scanned custom prop", slog.Any("prop", customProps))
+
+	for _, cp := range customProps {
+		batch.Queue(`
+			INSERT INTO caldav.custom_property
+			(
+			 	calendar_file_uid,
+				parent_id,
+				prop_name,
+				parameter_name,
+				value
+			) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (calendar_file_uid, parent_id, prop_name) DO UPDATE SET
+				parameter_name = EXCLUDED.parameter_name,
+				value = EXCLUDED.value
+		`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
 	}
 
 	return nil
@@ -348,48 +413,17 @@ func (r *repository) GetCalendar(
 	r.logger.Debug("postgres.GetCalendar")
 
 	var cal Calendar
-	var eventID int
+	isNotDeletedExceptions := make(map[int]string)
 
 	if err := r.client.Pool.QueryRow(ctx, `
 		SELECT
-			cp.version,
-			cp.product,
-			cp.scale,
-			cp.method,
-			ec.id,
-			ec.component_type,
-			ec.date_timestamp,
-			ec.created_at,
-			ec.last_modified_at,
-			ec.summary,
-			ec.description,
-			ec.url,
-			ec.organizer,
-			ec.start_date,
-			ec.end_date,
-			ec.duration,
-			ec.all_day,
-			ec.class,
-			ec.location,
-			ec.priority,
-			ec.sequence,
-			ec.status,
-			ec.categories,
-			ec.event_transparency,
-			ec.todo_completed,
-			ec.todo_percent_complete
-		FROM caldav.calendar_property AS cp
-		JOIN caldav.event_component AS ec
-			ON cp.calendar_file_uid = ec.calendar_file_uid
-		WHERE cp.calendar_file_uid = $1
-	`, uid).Scan(
-		&cal.Version, &cal.Product, &cal.Scale, &cal.Method,
-		&eventID, &cal.CompTypeBit,
-		&cal.Timestamp, &cal.Created, &cal.LastModified,
-		&cal.Summary, &cal.Description, &cal.Url, &cal.Organizer,
-		&cal.Start, &cal.End, &cal.Duration, &cal.AllDay, &cal.Class, &cal.Loc, &cal.Priority,
-		&cal.Sequence, &cal.Status, &cal.Categories, &cal.Transparent, &cal.Completed, &cal.PerCompleted,
-	); err != nil {
+			version,
+			product,
+			scale,
+			method
+		FROM caldav.calendar_property
+		WHERE calendar_file_uid = $1
+	`, uid).Scan(&cal.Version, &cal.Product, &cal.Scale, &cal.Method); err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.GetCalendar", logger.Err(err))
 		return nil, err
@@ -397,15 +431,31 @@ func (r *repository) GetCalendar(
 
 	rows, err := r.client.Pool.Query(ctx, `
 		SELECT
-			prop_name,
-			parameter_name,
-			value
-		FROM
-			caldav.custom_property
-		WHERE
-			calendar_file_uid = $1
-			AND parent_id = $2
-	`, uid, eventID)
+			id,
+			component_type,
+			date_timestamp,
+			created_at,
+			last_modified_at,
+			summary,
+			description,
+			url,
+			organizer,
+			start_date,
+			end_date,
+			duration,
+			all_day,
+			class,
+			location,
+			priority,
+			sequence,
+			status,
+			categories,
+			event_transparency,
+			todo_completed,
+			todo_percent_complete
+		FROM caldav.event_component
+		WHERE calendar_file_uid = $1
+	`, uid)
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.GetCalendar", logger.Err(err))
@@ -413,49 +463,128 @@ func (r *repository) GetCalendar(
 	}
 
 	for rows.Next() {
-		var prop CustomProp
+		var event Event
+		var eventID int
 
-		err = rows.Scan(
-			&prop.Name,
-			&prop.ParamName,
-			&prop.Value,
-		)
+		if err := rows.Scan(
+			&eventID, &event.CompTypeBit, &event.Timestamp, &event.Created, &event.LastModified,
+			&event.Summary, &event.Description, &event.Url, &event.Organizer, &event.Start, &event.End,
+			&event.Duration, &event.AllDay, &event.Class, &event.Loc, &event.Priority, &event.Sequence,
+			&event.Status, &event.Categories, &event.Transparent, &event.Completed, &event.PerCompleted,
+		); err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.GetCalendar", logger.Err(err))
+			return nil, err
+		}
+
+		subrows, err := r.client.Pool.Query(ctx, `
+			SELECT
+				prop_name,
+				parameter_name,
+				value
+			FROM
+				caldav.custom_property
+			WHERE
+				calendar_file_uid = $1
+				AND parent_id = $2
+		`, uid, eventID)
 		if err != nil {
 			err = r.client.ToPgErr(err)
 			r.logger.Error("postgres.GetCalendar", logger.Err(err))
 			return nil, err
 		}
-		cal.CustomProps = append(cal.CustomProps, prop)
-	}
 
-	var rs RecurrenceSet
-	err = r.client.Pool.QueryRow(ctx, `
-		SELECT
-			interval,
-			until,
-			count,
-			week_start,
-			by_day,
-			by_month_day,
-			by_month,
-			period_day,
-			by_set_pos
-		FROM
-			caldav.recurrence
-		WHERE
-			event_component_id = $1
-	`, eventID).Scan(
-		&rs.Interval, &rs.Until, &rs.Cnt, &rs.Wkst, &rs.Weekdays,
-		&rs.Monthdays, &rs.Months, &rs.PeriodDay, &rs.BySetPos,
-	)
-	if err != nil {
-		if !r.client.IsNoRows(err) {
+		for subrows.Next() {
+			var prop CustomProp
+
+			err = subrows.Scan(
+				&prop.Name,
+				&prop.ParamName,
+				&prop.Value,
+			)
+			if err != nil {
+				err = r.client.ToPgErr(err)
+				r.logger.Error("postgres.GetCalendar", logger.Err(err))
+				return nil, err
+			}
+			event.CustomProps = append(event.CustomProps, prop)
+		}
+
+		var rs RecurrenceSet
+		var recurrenceID int
+
+		err = r.client.Pool.QueryRow(ctx, `
+			SELECT
+				id,
+				interval,
+				until,
+				count,
+				week_start,
+				by_day,
+				by_month_day,
+				by_month,
+				period_day,
+				by_set_pos
+			FROM
+				caldav.recurrence
+			WHERE
+				event_component_id = $1
+		`, eventID).Scan(
+			&recurrenceID,
+			&rs.Interval, &rs.Until, &rs.Cnt, &rs.Wkst, &rs.Weekdays,
+			&rs.Monthdays, &rs.Months, &rs.PeriodDay, &rs.BySetPos,
+		)
+		if err != nil {
+			if !r.client.IsNoRows(err) {
+				err = r.client.ToPgErr(err)
+				r.logger.Error("postgres.GetCalendar", logger.Err(err))
+				return nil, err
+			}
+		}
+
+		subrows, err = r.client.Pool.Query(ctx, `
+			SELECT
+				event_component_id,
+				exception_date,
+				deleted_recurrence
+			FROM
+				caldav.recurrence_exception
+			WHERE
+				recurrence_id = $1
+		`, recurrenceID)
+		if err != nil {
 			err = r.client.ToPgErr(err)
 			r.logger.Error("postgres.GetCalendar", logger.Err(err))
 			return nil, err
 		}
+
+		for subrows.Next() {
+			var ex RecurrenceException
+			var exEventID int
+
+			err = subrows.Scan(
+				&exEventID, &ex.Value, &ex.IsDeleted,
+			)
+			if err != nil {
+				err = r.client.ToPgErr(err)
+				r.logger.Error("postgres.GetCalendar", logger.Err(err))
+				return nil, err
+			}
+
+			if ex.IsDeleted == BitTrue {
+				rs.Exceptions = append(rs.Exceptions, &ex)
+			} else if ex.IsDeleted == BitNone {
+				isNotDeletedExceptions[exEventID] = ex.ToDomain()
+			}
+		}
+
+		if _, ok := isNotDeletedExceptions[eventID]; ok {
+			event.NotDeletedException = isNotDeletedExceptions[eventID]
+		}
+
+		event.RecurrenceSet = &rs
+		cal.Events = append(cal.Events, event)
 	}
-	cal.RecurrenceSet = &rs
 
 	return cal.ToDomain(uid), nil
 }

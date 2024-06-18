@@ -153,11 +153,14 @@ CREATE TABLE IF NOT EXISTS caldav.recurrence
 
 CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 (
-    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    recurrence_id  BIGINT NOT NULL UNIQUE,
-    exception_date DATE   NOT NULL,
-    all_day        BIT    NOT NULL,
-    CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES caldav.recurrence (id)
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_component_id BIGINT    NOT NULL,
+    recurrence_id      BIGINT    NOT NULL,
+    exception_date     TIMESTAMP NOT NULL,
+    deleted_recurrence BIT       NOT NULL,
+    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id),
+    CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES caldav.recurrence (id),
+    UNIQUE (recurrence_id, exception_date)
 );
 
 CREATE OR REPLACE PROCEDURE caldav.create_or_update_calendar_file(

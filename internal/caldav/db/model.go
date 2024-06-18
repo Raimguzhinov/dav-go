@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -8,6 +9,15 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/teambition/rrule-go"
+)
+
+var (
+	BitNone = pgtype.Text{String: "0", Valid: true}
+	BitTrue = pgtype.Text{String: "1", Valid: true}
+)
+
+const (
+	datetimeUTCFormat = "20060102T150405Z"
 )
 
 type Folder struct {
@@ -42,17 +52,38 @@ func (cp *CustomProp) ToDomain() *ical.Prop {
 	return custom
 }
 
+type RecurrenceException struct {
+	Value     pgtype.Timestamp `json:"value"`
+	IsDeleted pgtype.Text      `json:"isDeleted"`
+}
+
+func ScanRecurrenceException(event *ical.Component) *RecurrenceException {
+	exRecurrenceID := timeValue(event, ical.PropRecurrenceID)
+	if exRecurrenceID.Valid {
+		return &RecurrenceException{
+			Value:     exRecurrenceID,
+			IsDeleted: BitTrue,
+		}
+	}
+	return nil
+}
+
+func (r *RecurrenceException) ToDomain() string {
+	return r.Value.Time.UTC().Format(datetimeUTCFormat)
+}
+
 type RecurrenceSet struct {
-	Interval      pgtype.Uint32     `json:"interval,omitempty"`
-	Cnt           pgtype.Uint32     `json:"cnt,omitempty"`
-	Until         pgtype.Date       `json:"until,omitempty"`
-	Wkst          pgtype.Uint32     `json:"wkst,omitempty"`
-	BySetPos      pgtype.Array[int] `json:"bySetPos,omitempty"`
-	Weekdays      pgtype.Uint32     `json:"weekdays,omitempty"`
-	Monthdays     pgtype.Uint32     `json:"monthdays,omitempty"`
-	Months        pgtype.Uint32     `json:"months,omitempty"`
-	PeriodDay     *int              `json:"periodDay,omitempty"`
-	ThisAndFuture pgtype.Text       `json:"thisAndFuture,omitempty"`
+	Interval      pgtype.Uint32          `json:"interval,omitempty"`
+	Cnt           pgtype.Uint32          `json:"cnt,omitempty"`
+	Until         pgtype.Date            `json:"until,omitempty"`
+	Wkst          pgtype.Uint32          `json:"wkst,omitempty"`
+	BySetPos      pgtype.Array[int]      `json:"bySetPos,omitempty"`
+	Weekdays      pgtype.Uint32          `json:"weekdays,omitempty"`
+	Monthdays     pgtype.Uint32          `json:"monthdays,omitempty"`
+	Months        pgtype.Uint32          `json:"months,omitempty"`
+	PeriodDay     *int                   `json:"periodDay,omitempty"`
+	ThisAndFuture pgtype.Text            `json:"thisAndFuture,omitempty"`
+	Exceptions    []*RecurrenceException `json:"exceptions,omitempty"`
 }
 
 func ScanRecurrence(event *ical.Component) *RecurrenceSet {
@@ -60,7 +91,6 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 	if err != nil {
 		return nil
 	}
-
 	if recurrenceSet == nil {
 		return nil
 	}
@@ -85,6 +115,15 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 		Monthdays:     pgtype.Uint32{Valid: false},
 		Months:        pgtype.Uint32{Valid: false},
 		ThisAndFuture: pgtype.Text{String: "1", Valid: true},
+	}
+
+	if recurrenceSet.GetExDate() != nil {
+		rs.Exceptions = make([]*RecurrenceException, len(recurrenceSet.GetExDate()))
+		for i, exDate := range recurrenceSet.GetExDate() {
+			rs.Exceptions[i] = &RecurrenceException{
+				Value: pgtype.Timestamp{Time: exDate, Valid: true},
+			}
+		}
 	}
 
 	options := recurrenceSet.GetRRule().Options
@@ -124,47 +163,7 @@ func ScanRecurrence(event *ical.Component) *RecurrenceSet {
 	return rs
 }
 
-func getMasks(options *rrule.ROption, standardDay map[rrule.Weekday]time.Weekday) (*time.Weekday, *int, *time.Month, *int) {
-	var weekdays time.Weekday
-	var months time.Month
-	var monthdays int
-	var periodDay int
-
-	if options.Byweekday != nil {
-		for _, mask := range options.Byweekday {
-			weekdays |= 1 << standardDay[mask]
-			periodDay = mask.N()
-		}
-	} else {
-		switch options.Freq {
-		case rrule.DAILY:
-			weekdays = 127
-		case rrule.WEEKLY:
-			weekdays |= 1 << options.Dtstart.UTC().Weekday()
-		default:
-		}
-	}
-
-	if options.Bymonth != nil {
-		for _, mask := range options.Bymonth {
-			months |= 1 << mask
-		}
-	}
-
-	if options.Bymonthday != nil {
-		for _, mask := range options.Bymonthday {
-			if mask < 1 || mask > 31 {
-				monthdays |= 1 << 0
-				continue
-			}
-			monthdays |= 1 << mask
-		}
-	}
-
-	return &weekdays, &periodDay, &months, &monthdays
-}
-
-func (rs *RecurrenceSet) ToDomain() *rrule.ROption {
+func (rs *RecurrenceSet) ToDomain() (*rrule.ROption, string) {
 	ro := rrule.ROption{Freq: rrule.SECONDLY}
 
 	rruleDay := map[time.Weekday]rrule.Weekday{
@@ -230,48 +229,83 @@ func (rs *RecurrenceSet) ToDomain() *rrule.ROption {
 		}
 	}
 
-	if ro.Freq == rrule.SECONDLY {
-		return nil
+	var exString string
+	for i, exception := range rs.Exceptions {
+		if exception.Value.Valid {
+			if i == 0 {
+				exString = exception.ToDomain()
+				continue
+			}
+			exString = fmt.Sprintf("%s,%s", exString, exception.ToDomain())
+		}
 	}
-	return &ro
+
+	if ro.Freq == rrule.SECONDLY {
+		return nil, exString
+	}
+	return &ro, exString
 }
 
 type Calendar struct {
-	Version       string           `json:"version"`
-	Product       string           `json:"product"`
-	CompTypeBit   pgtype.Text      `json:"compTypeBit,omitempty"`
-	Transparent   pgtype.Text      `json:"transparent,omitempty"`
-	AllDay        pgtype.Text      `json:"allDay,omitempty"`
-	Scale         pgtype.Text      `json:"scale,omitempty"`
-	Method        pgtype.Text      `json:"method,omitempty"`
-	Summary       pgtype.Text      `json:"summary,omitempty"`
-	Description   pgtype.Text      `json:"description,omitempty"`
-	Url           pgtype.Text      `json:"url,omitempty"`
-	Organizer     pgtype.Text      `json:"organizer,omitempty"`
-	Class         pgtype.Text      `json:"class,omitempty"`
-	Loc           pgtype.Text      `json:"loc,omitempty"`
-	Status        pgtype.Text      `json:"status,omitempty"`
-	Categories    pgtype.Text      `json:"categories,omitempty"`
-	Timestamp     pgtype.Timestamp `json:"timestamp,omitempty"`
-	Created       pgtype.Timestamp `json:"created,omitempty"`
-	LastModified  pgtype.Timestamp `json:"lastModified,omitempty"`
-	Start         pgtype.Timestamp `json:"start,omitempty"`
-	End           pgtype.Timestamp `json:"end,omitempty"`
-	Duration      pgtype.Uint32    `json:"duration,omitempty"`
-	Priority      pgtype.Uint32    `json:"priority,omitempty"`
-	Sequence      pgtype.Uint32    `json:"sequence,omitempty"`
-	Completed     pgtype.Uint32    `json:"completed,omitempty"`
-	PerCompleted  pgtype.Uint32    `json:"perCompleted,omitempty"`
-	CustomProps   []CustomProp     `json:"customProps,omitempty"`
-	RecurrenceSet *RecurrenceSet   `json:"recurrenceSet,omitempty"`
+	Version string      `json:"version"`
+	Product string      `json:"product"`
+	Scale   pgtype.Text `json:"scale,omitempty"`
+	Method  pgtype.Text `json:"method,omitempty"`
+	Events  []Event     `json:"events"`
 }
 
-func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
+func (c *Calendar) ToDomain(uid string) *ical.Calendar {
+	cal := ical.NewCalendar()
+
+	cal.Props.SetText(ical.PropVersion, c.Version)
+	cal.Props.SetText(ical.PropProductID, c.Product)
+	if c.Scale.Valid {
+		cal.Props.SetText(ical.PropCalendarScale, c.Scale.String)
+	}
+	if c.Method.Valid {
+		cal.Props.SetText(ical.PropMethod, c.Method.String)
+	}
+	cal.Children = make([]*ical.Component, 0, len(c.Events))
+	for _, event := range c.Events {
+		cal.Children = append(cal.Children, event.ToDomain(uid))
+	}
+
+	return cal
+}
+
+type Event struct {
+	CompTypeBit         pgtype.Text      `json:"compTypeBit,omitempty"`
+	Transparent         pgtype.Text      `json:"transparent,omitempty"`
+	AllDay              pgtype.Text      `json:"allDay,omitempty"`
+	Summary             pgtype.Text      `json:"summary,omitempty"`
+	Description         pgtype.Text      `json:"description,omitempty"`
+	Url                 pgtype.Text      `json:"url,omitempty"`
+	Organizer           pgtype.Text      `json:"organizer,omitempty"`
+	Class               pgtype.Text      `json:"class,omitempty"`
+	Loc                 pgtype.Text      `json:"loc,omitempty"`
+	Status              pgtype.Text      `json:"status,omitempty"`
+	Categories          pgtype.Text      `json:"categories,omitempty"`
+	Timestamp           pgtype.Timestamp `json:"timestamp,omitempty"`
+	Created             pgtype.Timestamp `json:"created,omitempty"`
+	LastModified        pgtype.Timestamp `json:"lastModified,omitempty"`
+	Start               pgtype.Timestamp `json:"start,omitempty"`
+	End                 pgtype.Timestamp `json:"end,omitempty"`
+	Duration            pgtype.Uint32    `json:"duration,omitempty"`
+	Priority            pgtype.Uint32    `json:"priority,omitempty"`
+	Sequence            pgtype.Uint32    `json:"sequence,omitempty"`
+	Completed           pgtype.Uint32    `json:"completed,omitempty"`
+	PerCompleted        pgtype.Uint32    `json:"perCompleted,omitempty"`
+	CustomProps         []CustomProp     `json:"customProps,omitempty"`
+	RecurrenceSet       *RecurrenceSet   `json:"recurrenceSet,omitempty"`
+	NotDeletedException string           `json:"notDeletedException,omitempty"`
+}
+
+func ScanEvent(event *ical.Component, wantSequence int) *Event {
 	if event == nil {
 		return nil
 	}
 
-	cal := Calendar{
+	e := Event{
 		CompTypeBit:  pgtype.Text{Valid: false},
 		Transparent:  pgtype.Text{Valid: false},
 		AllDay:       pgtype.Text{String: "0", Valid: true},
@@ -297,26 +331,90 @@ func ScanEvent(event *ical.Component, wantSequence int) *Calendar {
 
 	switch event.Name {
 	case ical.CompEvent:
-		cal.CompTypeBit = pgtype.Text{String: "1", Valid: true}
+		e.CompTypeBit = pgtype.Text{String: "1", Valid: true}
 	case ical.CompToDo:
-		cal.CompTypeBit = pgtype.Text{String: "0", Valid: true}
+		e.CompTypeBit = pgtype.Text{String: "0", Valid: true}
 	}
 
 	transparent := textValue(event, ical.PropTransparency)
 	if transparent.Valid {
 		switch transparent.String {
 		case "OPAQUE":
-			cal.Transparent = pgtype.Text{String: "1", Valid: true}
+			e.Transparent = pgtype.Text{String: "1", Valid: true}
 		case "TRANSPARENT":
-			cal.Transparent = pgtype.Text{String: "0", Valid: true}
+			e.Transparent = pgtype.Text{String: "0", Valid: true}
 		}
 	}
 
-	if cal.End.Time.Sub(cal.Start.Time) == time.Hour*24 {
-		cal.AllDay = pgtype.Text{String: "1", Valid: true}
+	if e.End.Time.Sub(e.Start.Time) == time.Hour*24 {
+		e.AllDay = pgtype.Text{String: "1", Valid: true}
 	}
 
-	return &cal
+	return &e
+}
+
+func (c *Event) ToDomain(uid string) *ical.Component {
+	calEvent := ical.NewEvent()
+
+	if c.CompTypeBit.Valid {
+		if c.CompTypeBit.String == "1" {
+			calEvent.Name = ical.CompEvent
+		} else {
+			calEvent.Name = ical.CompToDo
+		}
+	}
+
+	setTextValue(calEvent, ical.PropSummary, c.Summary)
+	setTextValue(calEvent, ical.PropDescription, c.Description)
+	setTextValue(calEvent, ical.PropUID, pgtype.Text{String: uid, Valid: true})
+	setTextValue(calEvent, ical.PropOrganizer, c.Organizer)
+	setIntValue(calEvent, ical.PropDuration, c.Duration)
+	setTextValue(calEvent, ical.PropClass, c.Class)
+	setTextValue(calEvent, ical.PropLocation, c.Loc)
+	setIntValue(calEvent, ical.PropPriority, c.Priority)
+	setTextValue(calEvent, ical.PropURL, c.Url)
+	setIntValue(calEvent, ical.PropSequence, c.Sequence)
+	setTextValue(calEvent, ical.PropStatus, c.Status)
+	setTextValue(calEvent, ical.PropCategories, c.Categories)
+	setIntValue(calEvent, ical.PropCompleted, c.Completed)
+	setIntValue(calEvent, ical.PropPercentComplete, c.PerCompleted)
+	setTimestampValue(calEvent, ical.PropDateTimeStart, c.Start)
+	setTimestampValue(calEvent, ical.PropDateTimeEnd, c.End)
+	setTimestampValue(calEvent, ical.PropCreated, c.Created)
+	setTimestampValue(calEvent, ical.PropDateTimeStamp, c.Timestamp)
+	setTimestampValue(calEvent, ical.PropLastModified, c.LastModified)
+
+	if c.Transparent.Valid {
+		if c.Transparent.String == "1" {
+			setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "OPAQUE", Valid: true})
+		} else {
+			setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "TRANSPARENT", Valid: true})
+		}
+	}
+
+	for _, custom := range c.CustomProps {
+		calEvent.Props.Set(custom.ToDomain())
+	}
+
+	rs, exString := c.RecurrenceSet.ToDomain()
+	if rs != nil {
+		rs.Dtstart = c.Start.Time.UTC()
+		calEvent.Props.SetRecurrenceRule(rs)
+	}
+	if exString != "" {
+		exProp := ical.NewProp(ical.PropExceptionDates)
+		exProp.SetValueType(ical.ValueDateTime)
+		exProp.Value = exString
+		calEvent.Props.Set(exProp)
+	}
+	if c.NotDeletedException != "" {
+		recurrenceIDProp := ical.NewProp(ical.PropRecurrenceID)
+		recurrenceIDProp.SetValueType(ical.ValueDateTime)
+		recurrenceIDProp.Value = c.NotDeletedException
+		calEvent.Props.Set(recurrenceIDProp)
+	}
+
+	return calEvent.Component
 }
 
 func textValue(event *ical.Component, propName string) pgtype.Text {
@@ -363,70 +461,6 @@ func timeValue(event *ical.Component, propName string) pgtype.Timestamp {
 	return pgtype.Timestamp{Time: val.UTC(), Valid: true}
 }
 
-func (c *Calendar) ToDomain(uid string) *ical.Calendar {
-	calEvent := ical.NewEvent()
-
-	if c.CompTypeBit.Valid {
-		if c.CompTypeBit.String == "1" {
-			calEvent.Name = ical.CompEvent
-		} else {
-			calEvent.Name = ical.CompToDo
-		}
-	}
-
-	setTextValue(calEvent, ical.PropSummary, c.Summary)
-	setTextValue(calEvent, ical.PropDescription, c.Description)
-	setTextValue(calEvent, ical.PropUID, pgtype.Text{String: uid, Valid: true})
-	setTextValue(calEvent, ical.PropOrganizer, c.Organizer)
-	setIntValue(calEvent, ical.PropDuration, c.Duration)
-	setTextValue(calEvent, ical.PropClass, c.Class)
-	setTextValue(calEvent, ical.PropLocation, c.Loc)
-	setIntValue(calEvent, ical.PropPriority, c.Priority)
-	setTextValue(calEvent, ical.PropURL, c.Url)
-	setIntValue(calEvent, ical.PropSequence, c.Sequence)
-	setTextValue(calEvent, ical.PropStatus, c.Status)
-	setTextValue(calEvent, ical.PropCategories, c.Categories)
-	setIntValue(calEvent, ical.PropCompleted, c.Completed)
-	setIntValue(calEvent, ical.PropPercentComplete, c.PerCompleted)
-	setTimestampValue(calEvent, ical.PropDateTimeStart, c.Start)
-	setTimestampValue(calEvent, ical.PropDateTimeEnd, c.End)
-	setTimestampValue(calEvent, ical.PropCreated, c.Created)
-	setTimestampValue(calEvent, ical.PropDateTimeStamp, c.Timestamp)
-	setTimestampValue(calEvent, ical.PropLastModified, c.LastModified)
-
-	if c.Transparent.Valid {
-		if c.Transparent.String == "1" {
-			setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "OPAQUE", Valid: true})
-		} else {
-			setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "TRANSPARENT", Valid: true})
-		}
-	}
-
-	for _, custom := range c.CustomProps {
-		calEvent.Props.Set(custom.ToDomain())
-	}
-
-	rs := c.RecurrenceSet.ToDomain()
-	if rs != nil {
-		rs.Dtstart = c.Start.Time
-		calEvent.Props.SetRecurrenceRule(rs)
-	}
-
-	cal := ical.NewCalendar()
-
-	cal.Props.SetText(ical.PropVersion, c.Version)
-	cal.Props.SetText(ical.PropProductID, c.Product)
-	if c.Scale.Valid {
-		cal.Props.SetText(ical.PropCalendarScale, c.Scale.String)
-	}
-	if c.Method.Valid {
-		cal.Props.SetText(ical.PropMethod, c.Method.String)
-	}
-	cal.Children = []*ical.Component{calEvent.Component}
-
-	return cal
-}
-
 func setTextValue(event *ical.Event, propName string, text pgtype.Text) {
 	if text.Valid {
 		event.Props.SetText(propName, text.String)
@@ -446,4 +480,44 @@ func setTimestampValue(event *ical.Event, propName string, value pgtype.Timestam
 	if value.Valid {
 		event.Props.SetDateTime(propName, value.Time.UTC())
 	}
+}
+
+func getMasks(options *rrule.ROption, standardDay map[rrule.Weekday]time.Weekday) (*time.Weekday, *int, *time.Month, *int) {
+	var weekdays time.Weekday
+	var months time.Month
+	var monthdays int
+	var periodDay int
+
+	if options.Byweekday != nil {
+		for _, mask := range options.Byweekday {
+			weekdays |= 1 << standardDay[mask]
+			periodDay = mask.N()
+		}
+	} else {
+		switch options.Freq {
+		case rrule.DAILY:
+			weekdays = 127
+		case rrule.WEEKLY:
+			weekdays |= 1 << options.Dtstart.UTC().Weekday()
+		default:
+		}
+	}
+
+	if options.Bymonth != nil {
+		for _, mask := range options.Bymonth {
+			months |= 1 << mask
+		}
+	}
+
+	if options.Bymonthday != nil {
+		for _, mask := range options.Bymonthday {
+			if mask < 1 || mask > 31 {
+				monthdays |= 1 << 0
+				continue
+			}
+			monthdays |= 1 << mask
+		}
+	}
+
+	return &weekdays, &periodDay, &months, &monthdays
 }
