@@ -36,6 +36,13 @@ func (ct *Tx) Commit(ctx context.Context) error {
 	return ct.tx.Commit(ctx)
 }
 
+func (ct *Tx) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.tx.Query(ctx, sql, args...)
+}
+
 func (ct *Tx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
