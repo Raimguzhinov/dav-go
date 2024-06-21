@@ -7,6 +7,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
 	"github.com/Raimguhinov/dav-go/internal/caldav/db/models"
@@ -124,15 +125,11 @@ func (r *repository) PutObject(
 	ifNoneMatch := opts.IfNoneMatch.IsWildcard()
 	ifMatch := opts.IfMatch.IsSet()
 
-	var (
-		wantEtag string
-		wantSeq  int
-		err      error
-	)
+	var wantEtag string
+	var err error
 
 	if ifMatch {
 		wantEtag, err = opts.IfMatch.ETag()
-		wantSeq++
 		if err != nil {
 			return nil, webdav.NewHTTPError(http.StatusBadRequest, err)
 		}
@@ -180,12 +177,14 @@ func (r *repository) PutObject(
 
 	eg := errgroup.Group{}
 	batch := r.client.NewBatch()
-	ov := utils.NewOnceValue()
+	recurParent := utils.NewOnceValue()
+	recurCnt := utils.NewOnceValue()
+	recurCnt.Set(len(object.Data.Component.Children))
 
 	for _, child := range object.Data.Component.Children {
 		if child.Name == ical.CompEvent || child.Name == ical.CompToDo {
 			eg.Go(func() error {
-				return r.createEvent(ctx, tx, batch, uid, wantSeq, ov, child)
+				return r.createEvent(ctx, tx, batch, uid, recurParent, recurCnt, child)
 			})
 		}
 	}
@@ -214,15 +213,15 @@ func (r *repository) createEvent(
 	tx *postgres.Tx,
 	batch *postgres.Batch,
 	uid string,
-	wantSequence int,
-	ov *utils.OnceValue,
+	recurParent *utils.OnceValue,
+	recurCnt *utils.OnceValue,
 	event *ical.Component,
 ) error {
 	r.logger.Debug("postgres.createEvent")
 
 	var parentID int
 
-	e := models.ScanEvent(event, wantSequence)
+	e := models.ScanEvent(event)
 
 	err := tx.QueryRow(ctx, `
 		INSERT INTO caldav.event_component
@@ -286,6 +285,39 @@ func (r *repository) createEvent(
 		return err
 	}
 
+	shouldRemoveRecur := false
+	if val := recurCnt.Get(); val != nil {
+		cnt := val.(int)
+		if cnt == 1 {
+			r.logger.Debug("postgres.createEvent should remove recurrence", slog.Int("parentID", parentID))
+			shouldRemoveRecur = true
+		} else if cnt > 1 {
+			rs, err := event.RecurrenceSet(time.UTC)
+			if err != nil {
+				return err
+			}
+			if rs != nil {
+				var pgRS models.RecurrenceSet
+				_, err := r.scanRecurrence(ctx, parentID, &pgRS)
+				if err != nil {
+					return err
+				}
+				modelRRuleString := rs.GetRRule().Options.RRuleString()
+				pgRRule, _ := pgRS.ToDomain()
+				pgRRuleString := pgRRule.String()
+				if modelRRuleString != pgRRuleString {
+					r.logger.Debug("postgres.createEvent should remove recurrence because recurrence changed", slog.Int("parentID", parentID))
+					shouldRemoveRecur = true
+				}
+			}
+		}
+	}
+	if shouldRemoveRecur {
+		if err := r.removeRecurrence(ctx, tx, parentID); err != nil {
+			return err
+		}
+	}
+
 	if rs := models.ScanRecurrence(event); rs != nil {
 		var recurrenceID int
 
@@ -325,7 +357,7 @@ func (r *repository) createEvent(
 			return err
 		}
 
-		if rs.Exceptions != nil {
+		if rs.Exceptions != nil && !shouldRemoveRecur {
 			for _, ex := range rs.Exceptions {
 				batch.Queue(`
 					INSERT INTO caldav.recurrence_exception
@@ -341,18 +373,16 @@ func (r *repository) createEvent(
 				`, parentID, recurrenceID, ex.Value, "1")
 			}
 		}
-
-		ov.Set(recurrenceID)
+		recurParent.Set(recurrenceID)
 	}
 
 	if ex := models.ScanRecurrenceException(event); ex != nil {
 		for {
 			r.logger.Debug("getting recurrence id...")
 
-			val := ov.Get()
+			val := recurParent.Get()
 			if val != nil {
 				recurrenceID := val.(int)
-
 				r.logger.Debug("got recurrence id", slog.Int("recurrence_id", recurrenceID))
 				batch.Queue(`
 					INSERT INTO caldav.recurrence_exception
@@ -366,7 +396,6 @@ func (r *repository) createEvent(
 						exception_date = EXCLUDED.exception_date,
 						deleted_recurrence = EXCLUDED.deleted_recurrence
 				`, parentID, recurrenceID, ex.Value, "0")
-
 				break
 			}
 		}
@@ -392,17 +421,71 @@ func (r *repository) createEvent(
 			INSERT INTO caldav.custom_property
 			(
 			 	calendar_file_uid,
-				parent_id,
+				event_component_id,
 				prop_name,
 				parameter_name,
 				value
 			) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (calendar_file_uid, parent_id, prop_name) DO UPDATE SET
+			ON CONFLICT (calendar_file_uid, event_component_id, prop_name) DO UPDATE SET
 				parameter_name = EXCLUDED.parameter_name,
 				value = EXCLUDED.value
 		`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
 	}
 
+	return nil
+}
+
+func (r *repository) removeRecurrence(ctx context.Context, tx *postgres.Tx, parentID int) error {
+	var childEvents []int
+
+	rows, err := tx.Query(ctx, `
+				DELETE FROM caldav.recurrence_exception
+				WHERE recurrence_id = (SELECT id FROM caldav.recurrence WHERE event_component_id = $1)
+				RETURNING event_component_id
+			`, parentID)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.createEvent", logger.Err(err))
+		return err
+	}
+
+	for rows.Next() {
+		var childID int
+		err := rows.Scan(&childID)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.createEvent", logger.Err(err))
+			return err
+		}
+		if childID == parentID {
+			continue
+		}
+		childEvents = append(childEvents, childID)
+	}
+
+	_, err = tx.Exec(ctx, `DELETE FROM caldav.recurrence WHERE event_component_id = $1`, parentID)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.createEvent", logger.Err(err))
+		return err
+	}
+
+	for _, childID := range childEvents {
+		r.logger.Debug("postgres.createEvent delete recurrence", slog.Int("childID", childID))
+
+		_, err = tx.Exec(ctx, `DELETE FROM caldav.custom_property WHERE event_component_id = $1`, childID)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.createEvent", logger.Err(err))
+			return err
+		}
+		_, err = tx.Exec(ctx, `DELETE FROM caldav.event_component WHERE id = $1`, childID)
+		if err != nil {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.createEvent", logger.Err(err))
+			return err
+		}
+	}
 	return nil
 }
 
@@ -487,7 +570,7 @@ func (r *repository) GetCalendar(
 				caldav.custom_property
 			WHERE
 				calendar_file_uid = $1
-				AND parent_id = $2
+				AND event_component_id = $2
 		`, uid, eventID)
 		if err != nil {
 			err = r.client.ToPgErr(err)
@@ -512,35 +595,9 @@ func (r *repository) GetCalendar(
 		}
 
 		var rs models.RecurrenceSet
-		var recurrenceID int
-
-		err = r.client.Pool.QueryRow(ctx, `
-			SELECT
-				id,
-				interval,
-				until,
-				count,
-				week_start,
-				by_day,
-				by_month_day,
-				by_month,
-				period_day,
-				by_set_pos
-			FROM
-				caldav.recurrence
-			WHERE
-				event_component_id = $1
-		`, eventID).Scan(
-			&recurrenceID,
-			&rs.Interval, &rs.Until, &rs.Cnt, &rs.Wkst, &rs.Weekdays,
-			&rs.Monthdays, &rs.Months, &rs.PeriodDay, &rs.BySetPos,
-		)
+		recurrenceID, err := r.scanRecurrence(ctx, eventID, &rs)
 		if err != nil {
-			if !r.client.IsNoRows(err) {
-				err = r.client.ToPgErr(err)
-				r.logger.Error("postgres.GetCalendar", logger.Err(err))
-				return nil, err
-			}
+			return nil, err
 		}
 
 		subrows, err = r.client.Pool.Query(ctx, `
@@ -588,6 +645,39 @@ func (r *repository) GetCalendar(
 	}
 
 	return cal.ToDomain(uid), nil
+}
+
+func (r *repository) scanRecurrence(ctx context.Context, eventID int, rs *models.RecurrenceSet) (int, error) {
+	var recurrenceID int
+	err := r.client.Pool.QueryRow(ctx, `
+			SELECT
+				id,
+				interval,
+				until,
+				count,
+				week_start,
+				by_day,
+				by_month_day,
+				by_month,
+				period_day,
+				by_set_pos
+			FROM
+				caldav.recurrence
+			WHERE
+				event_component_id = $1
+		`, eventID).Scan(
+		&recurrenceID,
+		&rs.Interval, &rs.Until, &rs.Cnt, &rs.Wkst, &rs.Weekdays,
+		&rs.Monthdays, &rs.Months, &rs.PeriodDay, &rs.BySetPos,
+	)
+	if err != nil {
+		if !r.client.IsNoRows(err) {
+			err = r.client.ToPgErr(err)
+			r.logger.Error("postgres.GetCalendar", logger.Err(err))
+			return 0, err
+		}
+	}
+	return recurrenceID, nil
 }
 
 func (r *repository) FindObjects(

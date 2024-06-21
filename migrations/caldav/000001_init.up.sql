@@ -80,15 +80,15 @@ CREATE TABLE IF NOT EXISTS caldav.event_component
 
 CREATE TABLE IF NOT EXISTS caldav.custom_property
 (
-    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    parent_id         BIGINT       NOT NULL,
-    calendar_file_uid UUID         NOT NULL,
-    prop_name         VARCHAR(50)  NOT NULL,
-    parameter_name    VARCHAR(50),
-    value             VARCHAR(512) NOT NULL,
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_component_id BIGINT       NOT NULL,
+    calendar_file_uid  UUID         NOT NULL,
+    prop_name          VARCHAR(50)  NOT NULL,
+    parameter_name     VARCHAR(50),
+    value              VARCHAR(512) NOT NULL,
     CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
-    CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES caldav.event_component (id),
-    UNIQUE (calendar_file_uid, parent_id, prop_name)
+    CONSTRAINT fk_parent FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id),
+    UNIQUE (calendar_file_uid, event_component_id, prop_name)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attachment
@@ -237,5 +237,61 @@ BEGIN
     END IF;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION sequence_update_trigger_fnc()
+    RETURNS trigger AS
+$$
+BEGIN
+    SELECT COALESCE(MAX(sequence), 0)
+    FROM caldav.event_component
+    WHERE event_component.calendar_file_uid = NEW.calendar_file_uid
+    INTO NEW.sequence;
+    NEW.sequence = NEW.sequence + 1;
+    RETURN NEW;
+END;
+$$
+    LANGUAGE 'plpgsql';
+CREATE TRIGGER sequence_update_trigger
+    BEFORE INSERT OR UPDATE
+    ON caldav.event_component
+    FOR EACH ROW
+EXECUTE PROCEDURE sequence_update_trigger_fnc();
+
+CREATE OR REPLACE FUNCTION recurrence_changed_update_trigger_fnc()
+    RETURNS trigger AS
+$$
+DECLARE
+    v_count_recurrence INT;
+BEGIN
+    SELECT count(*)
+    FROM caldav.recurrence
+    WHERE recurrence.event_component_id = (SELECT id
+                                           FROM caldav.event_component
+                                           WHERE event_component.calendar_file_uid =
+                                                 (SELECT calendar_file_uid
+                                                  FROM caldav.event_component
+                                                  WHERE id = NEW.event_component_id)
+                                           ORDER BY id
+                                           LIMIT 1)
+    INTO v_count_recurrence;
+
+    IF v_count_recurrence = 0 THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$
+    LANGUAGE 'plpgsql';
+CREATE TRIGGER recurrence_ex_update_trigger
+    BEFORE INSERT OR UPDATE
+    ON caldav.recurrence_exception
+    FOR EACH ROW
+EXECUTE PROCEDURE recurrence_changed_update_trigger_fnc();
+
+CREATE TRIGGER custom_property_update_trigger
+    BEFORE INSERT OR UPDATE
+    ON caldav.custom_property
+    FOR EACH ROW
+EXECUTE PROCEDURE recurrence_changed_update_trigger_fnc();
 
 COMMIT;
