@@ -39,28 +39,22 @@ func textValue(event *ical.Component, propName string) pgtype.Text {
 	return pgtype.Text{String: prop.Value, Valid: true}
 }
 
-func intValue(event *ical.Component, propName string, wantSequence ...int) pgtype.Uint32 {
+func intValue(event *ical.Component, propName string) pgtype.Uint32 {
 	prop := event.Props.Get(propName)
 	if prop == nil {
+		if propName == ical.PropSequence {
+			return pgtype.Uint32{Uint32: 1, Valid: true}
+		}
 		return pgtype.Uint32{Valid: false}
 	}
 	val, err := prop.Int()
 	if err != nil {
+		if propName == ical.PropSequence {
+			return pgtype.Uint32{Uint32: 1, Valid: true}
+		}
 		return pgtype.Uint32{Valid: false}
 	}
 	return pgtype.Uint32{Uint32: uint32(val), Valid: true}
-}
-
-func updateSequence(event *ical.Component, wantSequence int) pgtype.Uint32 {
-	prop := event.Props.Get(ical.PropSequence)
-	if prop == nil {
-		return pgtype.Uint32{Uint32: 1, Valid: true}
-	}
-	val, err := strconv.Atoi(prop.Value)
-	if err != nil {
-		return pgtype.Uint32{Uint32: uint32(wantSequence), Valid: true}
-	}
-	return pgtype.Uint32{Uint32: uint32(val + wantSequence), Valid: true}
 }
 
 func timeValue(event *ical.Component, propName string) pgtype.Timestamp {

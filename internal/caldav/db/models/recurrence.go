@@ -166,7 +166,7 @@ func (rs *RecurrenceSet) ToDomain() (*rrule.ROption, string) {
 		}
 	}
 	if rs.Monthdays.Valid {
-		ro.Freq |= rrule.MONTHLY
+		ro.Freq = rrule.MONTHLY
 		for i := 0; i <= 31; i++ {
 			if rs.Monthdays.Uint32&uint32(1<<i) != 0 {
 				if i == 0 {
@@ -178,7 +178,7 @@ func (rs *RecurrenceSet) ToDomain() (*rrule.ROption, string) {
 		}
 	}
 	if rs.Months.Valid {
-		ro.Freq |= rrule.YEARLY
+		ro.Freq = rrule.YEARLY
 		for i := time.January; i <= time.December; i++ {
 			if rs.Months.Uint32&uint32(time.Month(1<<i)) != 0 {
 				ro.Bymonth = append(ro.Bymonth, int(i))

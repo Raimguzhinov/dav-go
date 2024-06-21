@@ -34,7 +34,7 @@ type Event struct {
 	NotDeletedException string           `json:"notDeletedException,omitempty"`
 }
 
-func ScanEvent(event *ical.Component, wantSequence int) *Event {
+func ScanEvent(event *ical.Component) *Event {
 	if event == nil {
 		return nil
 	}
@@ -58,7 +58,7 @@ func ScanEvent(event *ical.Component, wantSequence int) *Event {
 		End:          timeValue(event, ical.PropDateTimeEnd),
 		Duration:     intValue(event, ical.PropDuration),
 		Priority:     intValue(event, ical.PropPriority),
-		Sequence:     updateSequence(event, wantSequence),
+		Sequence:     intValue(event, ical.PropSequence),
 		Completed:    intValue(event, ical.PropCompleted),
 		PerCompleted: intValue(event, ical.PropPercentComplete),
 	}
