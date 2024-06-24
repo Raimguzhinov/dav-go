@@ -47,6 +47,10 @@ test-migrate-down:
 	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_test' down
 .PHONY: test-migrate-down
 
+test:
+	CONFIG_PATH=$(shell pwd)/configs/config.yml gotestsum --format pkgname --raw-command go test -json -cover ./...
+.PHONY: test
+
 bin-deps:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	go install github.com/golang/mock/mockgen@latest
