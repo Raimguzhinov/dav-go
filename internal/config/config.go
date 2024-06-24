@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -61,7 +62,7 @@ type (
 )
 
 const (
-	EnvConfigPathName  = "CONFIG-PATH"
+	EnvConfigPathName  = "CONFIG_PATH"
 	FlagConfigPathName = "config"
 )
 
@@ -84,18 +85,21 @@ func GetConfig() *Config {
 
 		log.Print("config init")
 
-		if configPath == "" {
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			configPath = os.Getenv(EnvConfigPathName)
 		}
-
-		if configPath == "" {
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			log.Fatal("config path is required")
 		}
 
 		instance = &Config{}
 
 		if err := cleanenv.ReadConfig(configPath, instance); err != nil {
-			helpText := "Dav-Go - CalDAV+CardDAV Service"
+			helpText := fmt.Sprintf(
+				"Dav-Go - CalDAV+CardDAV Service - Config: %s - Version: %s",
+				configPath,
+				instance.App.Version,
+			)
 			help, _ := cleanenv.GetDescription(instance, &helpText)
 			log.Print(help)
 			log.Fatal(err)
