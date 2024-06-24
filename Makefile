@@ -37,6 +37,16 @@ migrate-down: ### migration down
 	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_$(BACKEND)' down
 .PHONY: migrate-down
 
+test-migrate-up:
+	migrate -path tests/migrations -database \
+	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_test' up
+.PHONY: test-migrate-up
+
+test-migrate-down:
+	migrate -path tests/migrations -database \
+	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_test' down
+.PHONY: test-migrate-down
+
 bin-deps:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	go install github.com/golang/mock/mockgen@latest
