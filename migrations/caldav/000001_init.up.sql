@@ -7,7 +7,7 @@ CREATE TYPE caldav.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(50) NOT NULL,
+    name        VARCHAR(100) NOT NULL,
     description TEXT                   DEFAULT NULL,
     types       caldav.calendar_type[] DEFAULT ARRAY ['VEVENT']::caldav.calendar_type[],
     max_size    INT                    DEFAULT 4096
