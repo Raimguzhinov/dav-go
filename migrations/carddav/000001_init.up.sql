@@ -28,46 +28,56 @@ CREATE TABLE IF NOT EXISTS carddav.access
     CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_uid) REFERENCES carddav.addressbook_folder (uid)
 );
 
+CREATE TABLE IF NOT EXISTS carddav.organization
+(
+    uid  UUID PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    unit VARCHAR(100)
+);
+
+CREATE TYPE carddav.address_object_names AS
+(
+    family_name      VARCHAR(100),
+    given_name       VARCHAR(100),
+    additional_names VARCHAR(100),
+    honorific_prefix VARCHAR(10),
+    honorific_suffix VARCHAR(10)
+);
+
 CREATE TABLE IF NOT EXISTS carddav.card_file
 (
     uid                    UUID PRIMARY KEY,
-    addressbook_folder_uid UUID         NOT NULL,
-    file_name              VARCHAR(255) NOT NULL,
-    etag                   TIMESTAMP    NOT NULL,
-    created_at             TIMESTAMP    NOT NULL,
-    modified_at            TIMESTAMP    NOT NULL,
-    version                VARCHAR(5)   NOT NULL,
-    formatted_name         VARCHAR(100) NOT NULL,
-    family_name            VARCHAR(100) NOT NULL,
-    given_name             VARCHAR(100) NOT NULL,
-    additional_names       VARCHAR(100) NOT NULL,
-    honorific_prefix       VARCHAR(10)  NOT NULL,
-    honorific_suffix       VARCHAR(10)  NOT NULL,
+    addressbook_folder_uid UUID                         NOT NULL,
+    file_name              VARCHAR(255)                 NOT NULL,
+    etag                   TIMESTAMP                    NOT NULL,
+    created_at             TIMESTAMP                    NOT NULL,
+    modified_at            TIMESTAMP                    NOT NULL,
+    version                VARCHAR(5)                   NOT NULL,
+    formatted_name         VARCHAR(100)                 NOT NULL,
+    names                  carddav.address_object_names NOT NULL,
     product                VARCHAR(100),
     kind                   VARCHAR(10),
     nickname               VARCHAR(50),
     photo                  BYTEA,
-    photo_media_type       VARCHAR(10),
+    photo_media_type       VARCHAR(50),
     logo                   BYTEA,
-    logo_media_type        VARCHAR(10),
+    logo_media_type        VARCHAR(50),
     sound                  BYTEA,
-    sound_media_type       VARCHAR(10),
+    sound_media_type       VARCHAR(50),
     birthday               DATE,
     anniversary            DATE,
     gender                 VARCHAR(1),
     revision_at            TIMESTAMP,
-    sort_string            VARCHAR(100),
     language               VARCHAR(50),
     timezone               VARCHAR(50),
     geo                    POINT,
     title                  TEXT,
     role                   VARCHAR(50),
-    org_name               VARCHAR(100),
-    org_unit               VARCHAR(50),
+    organization_uid       UUID,
     categories             VARCHAR(50),
     note                   TEXT,
-    classification         VARCHAR(50),
-    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_uid) REFERENCES carddav.addressbook_folder (uid)
+    CONSTRAINT fk_addressbook_folder FOREIGN KEY (addressbook_folder_uid) REFERENCES carddav.addressbook_folder (uid),
+    CONSTRAINT fk_organization FOREIGN KEY (organization_uid) REFERENCES carddav.organization (uid)
 );
 
 CREATE INDEX ON carddav.card_file USING GIST (geo);
