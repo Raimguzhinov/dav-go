@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/Raimguhinov/dav-go/internal/auth"
 	"github.com/Raimguhinov/dav-go/internal/config"
 	"github.com/Raimguhinov/dav-go/pkg/httpserver"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
@@ -24,13 +26,13 @@ func Run(cfg *config.Config) {
 	}
 	defer pg.Close()
 
-	//authProvider, err := auth.NewFromURL(authURL)
-	//if err != nil {
-	//	log.Error(fmt.Errorf("failed to load auth provider: %w", err))
-	//}
+	authProvider, err := auth.NewFromURL(cfg, "basic://")
+	if err != nil {
+		log.Error(fmt.Sprintf("failed to load auth provider: %v", err))
+	}
 
 	// HTTP Server
-	router := SetupRouter(log, pg, cfg)
+	router := SetupRouter(log, pg, cfg, authProvider)
 	httpServer := httpserver.New(router, httpserver.Port(cfg.HTTP.Port))
 
 	// Waiting signal

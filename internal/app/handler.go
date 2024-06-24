@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
+	"github.com/Raimguhinov/dav-go/internal/auth"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/ceres919/go-webdav/carddav"
@@ -12,21 +14,22 @@ import (
 type userPrincipalBackend struct{}
 
 func (u *userPrincipalBackend) CurrentUserPrincipal(ctx context.Context) (string, error) {
-	//authCtx, ok := auth.FromContext(ctx)
-	//if !ok {
-	//	panic("Invalid data in auth context!")
-	//}
-	//if authCtx == nil {
-	//	return "", fmt.Errorf("unauthenticated requests are not supported")
-	//}
-	//
+	authCtx, ok := auth.FromContext(ctx)
+	if !ok {
+		panic("Invalid data in auth context!")
+	}
+	if authCtx == nil {
+		return "", fmt.Errorf("unauthenticated requests are not supported")
+	}
+
+	userDir := authCtx.UserName
 	//userDir := base64.RawStdEncoding.EncodeToString([]byte(authCtx.UserName))
-	return "/" + "admin" + "/", nil
+	return "/" + userDir + "/", nil
 }
 
 type davHandler struct {
-	upBackend webdav.UserPrincipalBackend
-	//authBackend    auth.AuthProvider
+	upBackend      webdav.UserPrincipalBackend
+	authBackend    auth.AuthProvider
 	caldavBackend  caldav.Backend
 	carddavBackend carddav.Backend
 }

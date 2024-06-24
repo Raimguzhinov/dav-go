@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Raimguhinov/dav-go/internal/auth"
 	"github.com/Raimguhinov/dav-go/internal/config"
 	"github.com/Raimguhinov/dav-go/internal/usecase"
 	mwlogger "github.com/Raimguhinov/dav-go/pkg/httpserver/middleware/logger"
@@ -16,7 +17,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config) http.Handler {
+func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config, auth auth.AuthProvider) http.Handler {
 	log.With(
 		slog.Any("AllowedMethods", cfg.HTTP.CORS.AllowedMethods),
 		slog.Any("AllowedOrigins", cfg.HTTP.CORS.AllowedOrigins),
@@ -44,10 +45,10 @@ func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config) 
 		Debug:              cfg.HTTP.CORS.Debug,
 		Logger:             log,
 	}).Handler)
-	s.Use(middleware.BasicAuth(cfg.App.Name, map[string]string{
-		cfg.HTTP.User: cfg.HTTP.Password,
-	}))
-	//s.Use(authProvider.Middleware())
+	//s.Use(middleware.BasicAuth(cfg.App.Name, map[string]string{
+	//	cfg.HTTP.User: cfg.HTTP.Password,
+	//}))
+	s.Use(auth.Middleware())
 	s.Use(middleware.Recoverer)
 
 	upBackend := &userPrincipalBackend{}
@@ -61,6 +62,7 @@ func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config) 
 	carddavHandler := carddav.Handler{Backend: carddavBackend}
 	caldavHandler := caldav.Handler{Backend: caldavBackend}
 	handler := davHandler{
+		authBackend:    auth,
 		upBackend:      upBackend,
 		caldavBackend:  caldavBackend,
 		carddavBackend: carddavBackend,
