@@ -117,7 +117,6 @@ func (b *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 }
 
 func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
-	addressbook, err := b.GetAddressBook(ctx, path)
 	//TODO
 	//addressbook, err := b.GetAddressBook(ctx, path)
 	//if err != nil {
@@ -130,40 +129,40 @@ func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
 	return nil
 }
 
-	if err != nil {
-		return err
-	}
-	err = b.repo.DeleteFolder(ctx, addressbook)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (b *backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
-	// TODO
-	if path == "/admin/contacts/1/" {
-		card, err := vcard.NewDecoder(strings.NewReader(aliceData)).Decode()
-		if err != nil {
-			return nil, err
-		}
-		return &carddav.AddressObject{
-			Path: path,
-			Card: card,
-		}, nil
-	} else {
-		return nil, webdav.NewHTTPError(404, fmt.Errorf("Not found"))
-	}
-	//panic("TODO: implement GetAddressObject")
-}
-
-func (b *backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
-
-	alice, err := b.GetAddressObject(ctx, "/admin/contacts/1/", req)
+func (b *backend) GetAddressObject(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return []carddav.AddressObject{*alice}, nil
+
+	splitPath := strings.Split(strings.TrimPrefix(urlPath, homeSetPath), "/")
+	addressObjects, err := b.repo.FindAddressObjects(ctx, homeSetPath, splitPath[0])
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range addressObjects {
+		if addressObjects[i].Path == urlPath {
+			return &addressObjects[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("address object for path: %s not found", urlPath)
+}
+
+func (b *backend) ListAddressObjects(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	abUID := path.Clean(strings.TrimPrefix(urlPath, homeSetPath))
+	addressObjects, err := b.repo.FindAddressObjects(ctx, homeSetPath, abUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return addressObjects, nil
 
 }
 
