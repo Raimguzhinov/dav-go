@@ -156,9 +156,88 @@ func (r *repository) PutAddressObject(ctx context.Context, homeSetPath string, o
 	return nil
 }
 
-func (r *repository) FindAddressObjects(ctx context.Context) ([]carddav.AddressObject, error) {
-	//panic("TODO")
-	return nil, nil
+func (r *repository) FindAddressObjects(ctx context.Context, homeSetPath, abUIDstring string) ([]carddav.AddressObject, error) {
+	abUID, err := uuid.Parse(abUIDstring)
+	if err != nil {
+		r.logger.Error("postgres.FindAddressObjects", logger.Err(err))
+		return nil, err
+	}
+
+	rows, err := r.client.Pool.Query(ctx, `
+		SELECT
+			uid,
+			addressbook_folder_uid,
+			file_name,
+			etag,
+			created_at,
+			modified_at,
+			version,
+			formatted_name,
+			family_name,
+			given_name,
+			additional_names,
+			honorific_prefix,
+			honorific_suffix,
+			product,
+			kind,
+			nickname,
+			photo,
+			photo_media_type,
+			logo,
+			logo_media_type,
+			sound,
+			sound_media_type,
+			birthday,
+			anniversary,
+			gender,
+			revision_at,
+			language,
+			timezone,
+			geo,
+			title,
+			role,
+			organization_uid,
+			categories,
+			note
+		FROM
+			carddav.card_file c
+		WHERE
+		    c.addressbook_folder_uid = $1
+		GROUP BY
+			c.uid, c.addressbook_folder_uid
+		ORDER BY
+			c.uid
+		`, abUID)
+	if err != nil {
+		r.logger.Error("postgres.FindAddressObjects", logger.Err(err))
+		err = r.client.ToPgErr(err)
+		return nil, err
+	}
+
+	addressObjects := make([]carddav.AddressObject, 0)
+
+	for rows.Next() {
+		var ao carddav.AddressObject
+		var cf cardFile
+		err = rows.Scan(&cf.UID, &cf.AddressbookFolderUID, &cf.FileName, &cf.Etag, &cf.CreatedAt, &cf.ModifiedAt, &cf.Version, &cf.FormattedName, &cf.FamilyName, &cf.GivenName, &cf.AdditionalNames, &cf.HonorificPrefix, &cf.HonorificSuffix, &cf.Product, &cf.Kind,
+			&cf.Nickname, &cf.Photo, &cf.PhotoMediaType, &cf.Logo, &cf.LogoMediaType, &cf.Sound, &cf.SoundMediaType, &cf.Birthday, &cf.Anniversary, &cf.Gender,
+			&cf.RevisionAt, &cf.Language, &cf.Timezone, &cf.Geo, &cf.Title, &cf.Role, &cf.OrganizationUID, &cf.Categories, &cf.Note)
+		if err != nil {
+			r.logger.Error("postgres.FindAddressObjects", logger.Err(err))
+			err = r.client.ToPgErr(err)
+			return nil, err
+		}
+
+		err = cf.toAddressObject(&ao)
+		ao.Path = path.Join(homeSetPath, ao.Path)
+		if err != nil {
+			r.logger.Error("postgres.FindAddressObjects", logger.Err(err))
+			return nil, err
+		}
+		addressObjects = append(addressObjects, ao)
+	}
+
+	return addressObjects, nil
 }
 
 func (r *repository) DeleteAddressObject(ctx context.Context, path string) error {
