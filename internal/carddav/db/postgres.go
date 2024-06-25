@@ -2,7 +2,7 @@ package carddav_db
 
 import (
 	"context"
-	"regexp"
+	"path"
 	"strings"
 
 	backend "github.com/Raimguhinov/dav-go/internal/carddav"
@@ -24,29 +24,12 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 	}
 }
 
-type folder struct {
-	Uid   uuid.UUID `json:"uid"`
-	Types []string  `json:"types"`
-}
-
-func (f *folder) ParseTypes() ([]carddav.AddressDataType, error) {
-	supTypes := make([]carddav.AddressDataType, 0)
-	re := regexp.MustCompile(`\((.*),(.*)\)`)
-
-	for _, t := range f.Types {
-		var supType carddav.AddressDataType
-		result := re.FindStringSubmatch(t)
-		supType.ContentType = result[0]
-		supType.Version = result[1]
-	}
-	return supTypes, nil
-}
-
 func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, addressbook *carddav.AddressBook) error {
 	var f folder
 
-	abUid, err := uuid.Parse(strings.TrimSuffix(strings.TrimPrefix(addressbook.Path, homeSetPath), "/"))
+	abUid, err := uuid.Parse(path.Clean(strings.TrimPrefix(addressbook.Path, homeSetPath)))
 	if err != nil {
+		r.logger.Error("postgres.CreateFolder", logger.Err(err))
 		return err
 	}
 
@@ -80,6 +63,7 @@ func (r *repository) FindFolders(ctx context.Context, homeSetPath string) ([]car
 			f.uid
 		`)
 	if err != nil {
+		r.logger.Error("postgres.FindFolder", logger.Err(err))
 		err = r.client.ToPgErr(err)
 		return nil, err
 	}
@@ -92,13 +76,15 @@ func (r *repository) FindFolders(ctx context.Context, homeSetPath string) ([]car
 
 		err = rows.Scan(&f.Uid, &addressbook.Name, &addressbook.Description, &addressbook.MaxResourceSize, &f.Types)
 		if err != nil {
+			r.logger.Error("postgres.FindFolder", logger.Err(err))
 			err = r.client.ToPgErr(err)
 			return nil, err
 		}
 
-		addressbook.Path = f.Uid.String()
+		addressbook.Path = path.Join(homeSetPath, f.Uid.String()) + "/"
 		addressbook.SupportedAddressData, err = f.ParseTypes()
 		if err != nil {
+			r.logger.Error("postgres.FindFolder", logger.Err(err))
 			return nil, err
 		}
 		addressbooks = append(addressbooks, addressbook)
@@ -112,9 +98,62 @@ func (r *repository) DeleteFolder(ctx context.Context, addressbook *carddav.Addr
 	return nil
 }
 
-func (r *repository) PutAddressObject(ctx context.Context, object *carddav.AddressObject, opts *carddav.PutAddressObjectOptions) (string, error) {
-	//panic("TODO")
-	return "", nil
+func (r *repository) PutAddressObject(ctx context.Context, homeSetPath string, object *carddav.AddressObject, opts *carddav.PutAddressObjectOptions) error {
+	cf, err := fromAddressObject(object, homeSetPath)
+	if err != nil {
+		r.logger.Error("postgres.PutAddressObject", logger.Err(err))
+		return err
+	}
+
+	_, err = r.client.Pool.Exec(ctx, `
+		INSERT INTO carddav.card_file
+		(
+			 uid,
+			 addressbook_folder_uid,
+			 file_name,
+			 etag,
+			 created_at,
+			 modified_at,
+			 version,
+			 formatted_name,
+			 family_name,
+			 given_name,
+			 additional_names,
+			 honorific_prefix,
+			 honorific_suffix,
+			 product,
+			 kind,
+			 nickname,
+			 photo,
+			 photo_media_type,
+			 logo,
+			 logo_media_type,
+			 sound,
+			 sound_media_type,
+			 birthday,
+			 anniversary,
+			 gender,
+			 revision_at,
+			 language,
+			 timezone,
+			 geo,
+			 title,
+			 role,
+			 organization_uid,
+			 categories,
+			 note
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+	`, &cf.UID, &cf.AddressbookFolderUID, &cf.FileName, &cf.Etag, &cf.CreatedAt, &cf.ModifiedAt, &cf.Version, &cf.FormattedName, &cf.FamilyName, &cf.GivenName, &cf.AdditionalNames, &cf.HonorificPrefix, &cf.HonorificSuffix, &cf.Product, &cf.Kind,
+		&cf.Nickname, &cf.Photo, &cf.PhotoMediaType, &cf.Logo, &cf.LogoMediaType, &cf.Sound, &cf.SoundMediaType, &cf.Birthday, &cf.Anniversary, &cf.Gender,
+		&cf.RevisionAt, &cf.Language, &cf.Timezone, &cf.Geo, &cf.Title, &cf.Role, &cf.OrganizationUID, &cf.Categories, &cf.Note)
+	if err != nil {
+		err = r.client.ToPgErr(err)
+		r.logger.Error("postgres.PutAddressObject", logger.Err(err))
+		return err
+	}
+
+	return nil
 }
 
 func (r *repository) FindAddressObjects(ctx context.Context) ([]carddav.AddressObject, error) {
@@ -128,6 +167,6 @@ func (r *repository) DeleteAddressObject(ctx context.Context, path string) error
 }
 
 func (r *repository) GetFolderAccess(ctx context.Context, addressbook *carddav.AddressBook) ([]string, error) {
-	//panic("TODO")
+
 	return nil, nil
 }

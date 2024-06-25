@@ -1,11 +1,15 @@
 package carddav
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
+	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/carddav"
 	"github.com/emersion/go-vcard"
@@ -17,22 +21,6 @@ type backend struct {
 	prefix string
 	repo   Repository
 }
-
-var (
-	aliceData = `BEGIN:VCARD
-VERSION:4.0
-UID:urn:uuid:4fbe8971-0bc3-424c-9c26-36c3e1eff6b1
-FN;PID=1.1:Alice Gopher
-N:Gopher;Alice;;;
-EMAIL;PID=1.1:alice@example.com
-CLIENTPIDMAP:1;urn:uuid:53e374d9-337e-4727-8803-a1e9c14e0551
-END:VCARD`
-	//alicePath = "urn:uuid:4fbe8971-0bc3-424c-9c26-36c3e1eff6b1.vcf"
-	//
-	//currentUserPrincipalKey = contextKey("test:currentUserPrincipal")
-	//homeSetPathKey          = contextKey("test:homeSetPath")
-	//addressBookPathKey      = contextKey("test:addressBookPath")
-)
 
 func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*backend, error) {
 	return &backend{
@@ -61,7 +49,7 @@ func (b *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.Addres
 		return nil, err
 	}
 	ab := carddav.AddressBook{
-		Path:        path.Join(homeSetPath, uid.String(), "/"),
+		Path:        path.Join(homeSetPath, uid.String()) + "/",
 		Name:        "Contacts",
 		Description: "Default addressbook",
 	}
@@ -93,16 +81,10 @@ func (b *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, 
 		}, nil
 	}
 
-	for i := range addressbooks {
-		addressbooks[i].Path = path.Join(homeSetPath, addressbooks[i].Path) + "/"
-	}
-
 	return addressbooks, nil
 }
 
 func (b *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
-	urlPath = strings.TrimSuffix(urlPath, "/")
-
 	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -114,8 +96,7 @@ func (b *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.
 	}
 
 	for _, addressbook := range addressbooks {
-		if path.Join(homeSetPath, addressbook.Path) == urlPath {
-			addressbook.Path = path.Join(homeSetPath, addressbook.Path) + "/"
+		if addressbook.Path == urlPath {
 			return &addressbook, nil
 		}
 	}
@@ -128,7 +109,6 @@ func (b *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 		return err
 	}
 
-	//addressBook.Path = strings.TrimSuffix(strings.TrimPrefix(addressBook.Path, homeSetPath), "/")
 	err = b.repo.CreateFolder(ctx, homeSetPath, addressBook)
 	if err != nil {
 		return err
@@ -138,6 +118,18 @@ func (b *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 
 func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
 	addressbook, err := b.GetAddressBook(ctx, path)
+	//TODO
+	//addressbook, err := b.GetAddressBook(ctx, path)
+	//if err != nil {
+	//	return err
+	//}
+	//err = b.repo.DeleteFolder(ctx, addressbook)
+	//if err != nil {
+	//	return err
+	//}
+	return nil
+}
+
 	if err != nil {
 		return err
 	}
@@ -175,26 +167,37 @@ func (b *backend) ListAddressObjects(ctx context.Context, path string, req *card
 
 }
 
-func (b *backend) QueryAddressObjects(ctx context.Context, path string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
-
+func (b *backend) QueryAddressObjects(ctx context.Context, urlPath string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+	//TODO
 	return nil, nil
 }
 
-func (b *backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
-
-	ao := carddav.AddressObject{
-		Path: path,
-		Card: card,
-	}
-	_, err := b.repo.PutAddressObject(ctx, &ao, opts)
+func (b *backend) PutAddressObject(ctx context.Context, urlPath string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+
+	var buf bytes.Buffer
+	err = vcard.NewEncoder(bufio.NewWriter(&buf)).Encode(card)
+	eTag, err := etag.FromData(buf.Bytes())
+
+	ao := carddav.AddressObject{
+		Path:    urlPath,
+		ModTime: time.Now().UTC(),
+		ETag:    eTag,
+		Card:    card,
+	}
+
+	err = b.repo.PutAddressObject(ctx, homeSetPath, &ao, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &ao, nil
 }
 
-func (b *backend) DeleteAddressObject(ctx context.Context, path string) error {
-
+func (b *backend) DeleteAddressObject(ctx context.Context, urlPath string) error {
+	//TODO
 	return nil
 }
 
