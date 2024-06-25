@@ -35,26 +35,21 @@ CREATE TABLE IF NOT EXISTS carddav.organization
     unit VARCHAR(100)
 );
 
-CREATE TYPE carddav.address_object_names AS
-(
-    family_name      VARCHAR(100),
-    given_name       VARCHAR(100),
-    additional_names VARCHAR(100),
-    honorific_prefix VARCHAR(10),
-    honorific_suffix VARCHAR(10)
-);
-
 CREATE TABLE IF NOT EXISTS carddav.card_file
 (
     uid                    UUID PRIMARY KEY,
-    addressbook_folder_uid UUID                         NOT NULL,
-    file_name              VARCHAR(255)                 NOT NULL,
-    etag                   TIMESTAMP                    NOT NULL,
-    created_at             TIMESTAMP                    NOT NULL,
-    modified_at            TIMESTAMP                    NOT NULL,
-    version                VARCHAR(5)                   NOT NULL,
-    formatted_name         VARCHAR(100)                 NOT NULL,
-    names                  carddav.address_object_names NOT NULL,
+    addressbook_folder_uid UUID         NOT NULL,
+    file_name              VARCHAR(255) NOT NULL,
+    etag                   VARCHAR(40)  NOT NULL,
+    created_at             TIMESTAMP    NOT NULL,
+    modified_at            TIMESTAMP    NOT NULL,
+    version                VARCHAR(5)   NOT NULL,
+    formatted_name         VARCHAR(100) NOT NULL,
+    family_name            VARCHAR(100),
+    given_name             VARCHAR(100),
+    additional_names       VARCHAR(100),
+    honorific_prefix       VARCHAR(10),
+    honorific_suffix       VARCHAR(10),
     product                VARCHAR(100),
     kind                   VARCHAR(10),
     nickname               VARCHAR(50),
