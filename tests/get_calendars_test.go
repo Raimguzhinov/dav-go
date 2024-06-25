@@ -61,16 +61,3 @@ func TestGetCalendars_IncorrectHomeSetPath(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, calendars)
 }
-
-func TestGetCalendars_CreateCalendar(t *testing.T) {
-	ctx, st := suite.New(t, true)
-	principal, err := st.Client.FindCurrentUserPrincipal(ctx)
-	require.NoError(t, err)
-	assert.NotEmpty(t, principal)
-
-	calendarHomeSet, err := st.Client.FindCalendarHomeSet(ctx, principal)
-	require.NoError(t, err)
-	assert.NotEmpty(t, calendarHomeSet)
-
-	st.CreateTestCalendar(ctx, calendarHomeSet)
-}

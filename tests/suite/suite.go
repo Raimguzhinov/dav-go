@@ -2,10 +2,9 @@ package suite
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
-	"path"
+	"strings"
 	"testing"
 
 	"github.com/Raimguhinov/dav-go/internal/config"
@@ -32,19 +31,23 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 	// Test Calendar
 	testCalendarData := map[string]any{
 		"name":        fmt.Sprintf("Private Calendar - UID:%s for (%s)", uuid.New(), t.Name()),
-		"description": base64.RawStdEncoding.EncodeToString([]byte(cfg.PG.URL + cfg.HTTP.Password)),
+		"description": "Protei Calendar",
 		"types":       []string{"VEVENT", "VTODO", "VJOURNAL"},
-		"max_size":    7777,
+		"max_size":    int64(4096),
+	}
+
+	conn, err := pgx.Connect(context.Background(), cfg.PG.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Ping(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 
 	t.Cleanup(func() {
 		t.Helper()
 		cancel()
 
-		conn, err := pgx.Connect(context.Background(), cfg.PG.URL)
-		if err != nil {
-			t.Fatal(err)
-		}
 		_, err = conn.Exec(context.Background(), `
 			INSERT INTO caldav.test_cases (calendar_folder_id, calendar_file_uid, event_component_id, calendar_property_id,
 			                               custom_property_id, recurrence_id, recurrence_exception_id)
@@ -60,8 +63,8 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 			  AND cfo.description = $2
 			  AND cfo.types = $3 
 			  AND cfo.max_size = $4
-		`, testCalendarData["name"], testCalendarData["description"],
-			testCalendarData["types"], testCalendarData["max_size"],
+		`, testCalendarData["name"].(string), testCalendarData["description"].(string),
+			testCalendarData["types"].([]string), testCalendarData["max_size"].(int64),
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -86,8 +89,39 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 }
 
 func (s *Suite) CreateTestCalendar(ctx context.Context, calendarHomeSet string) {
-	err := s.Client.Mkdir(ctx, path.Join(calendarHomeSet, s.TestCalendarData["name"].(string)))
+	var reportCalendarData = fmt.Sprintf(`
+		<?xml version='1.0' encoding='UTF-8' ?>
+		<A:mkcol xmlns:A="DAV:" xmlns:B="urn:ietf:params:xml:ns:caldav">
+		  <A:set>
+		    <A:prop>
+		      <A:resourcetype>
+		        <A:collection />
+		        <B:calendar />
+		      </A:resourcetype>
+		      <A:displayname>%s</A:displayname>
+		      <A:calendar-description>%s</A:calendar-description>
+		    </A:prop>
+		  </A:set>
+		</A:mkcol>
+		`, s.TestCalendarData["name"].(string), s.TestCalendarData["description"].(string),
+	)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("MKCOL", fmt.Sprintf("http://%s:%s", s.Cfg.HTTP.IP, s.Cfg.HTTP.Port)+calendarHomeSet+"1/", strings.NewReader(reportCalendarData))
 	if err != nil {
 		s.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/xml")
+	req.SetBasicAuth(s.Cfg.HTTP.User, s.Cfg.HTTP.Password)
+
+	resp, err := client.Do(req.WithContext(ctx))
+	if err != nil {
+		s.Fatal(err)
+	}
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			s.Fatal(err)
+		}
+	}()
 }

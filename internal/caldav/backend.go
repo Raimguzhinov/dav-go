@@ -51,18 +51,21 @@ func (b *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	if err != nil {
 		return err
 	}
+	if calendar.MaxResourceSize == 0 || calendar.SupportedComponentSet == nil {
+		return b.createDefaultCalendar(ctx, calendar.Name)
+	}
 	if err := b.repo.CreateFolder(ctx, homeSetPath, calendar); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *backend) createDefaultCalendar(ctx context.Context) error {
+func (b *backend) createDefaultCalendar(ctx context.Context, name string) error {
 	if err := b.CreateCalendar(ctx, &caldav.Calendar{
-		Name:                  "Private",
-		Description:           "Test",
+		Name:                  name,
+		Description:           "Protei Calendar",
 		MaxResourceSize:       4096,
-		SupportedComponentSet: []string{"VEVENT", "VTODO"},
+		SupportedComponentSet: []string{"VEVENT", "VTODO", "VJOURNAL"},
 	}); err != nil {
 		return err
 	}

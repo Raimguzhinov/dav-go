@@ -48,7 +48,9 @@ test-migrate-down:
 .PHONY: test-migrate-down
 
 test:
-	CONFIG_PATH=$(shell pwd)/configs/config.yml gotestsum --format pkgname --raw-command go test -json -cover ./...
+	CONFIG_PATH=$(shell pwd)/configs/config.yml \
+	TESTCASES_DIR=$(shell pwd)/tests/cases \
+	gotestsum --format pkgname --raw-command go test -json -cover -count=1 ./...
 .PHONY: test
 
 bin-deps:
