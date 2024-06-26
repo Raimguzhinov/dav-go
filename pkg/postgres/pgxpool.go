@@ -45,7 +45,9 @@ func New(ctx context.Context, logger *adapter.Logger, url string, opts ...Option
 	}
 
 	poolConfig.MaxConns = int32(pg.maxPoolSize)
-	poolConfig.ConnConfig.Tracer = adapter.NewTracer(logger)
+	if logger != nil {
+		poolConfig.ConnConfig.Tracer = adapter.NewTracer(logger)
+	}
 
 	for pg.connAttempts > 0 {
 		ctx, cancel := context.WithTimeout(ctx, pg.connTimeout)

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	backend "github.com/Raimguhinov/dav-go/internal/caldav"
@@ -247,8 +246,9 @@ func (r *repository) createEvent(
 			categories,
 			event_transparency,
 			todo_completed,
-			todo_percent_complete
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			todo_percent_complete,
+			properties
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT (calendar_file_uid, created_at) DO UPDATE SET
 			component_type = EXCLUDED.component_type,
 			date_timestamp = EXCLUDED.date_timestamp,
@@ -269,7 +269,8 @@ func (r *repository) createEvent(
 			categories = EXCLUDED.categories,
 			event_transparency = EXCLUDED.event_transparency,
 			todo_completed = EXCLUDED.todo_completed,
-			todo_percent_complete = EXCLUDED.todo_percent_complete
+			todo_percent_complete = EXCLUDED.todo_percent_complete,
+			properties = EXCLUDED.properties
 		RETURNING id
 	`, uid, e.CompTypeBit,
 		e.Timestamp, e.Created, e.LastModified,
@@ -277,7 +278,7 @@ func (r *repository) createEvent(
 		e.Start, e.End,
 		e.Duration, e.AllDay, e.Class, e.Loc, e.Priority,
 		e.Sequence, e.Status, e.Categories, e.Transparent,
-		e.Completed, e.PerCompleted,
+		e.Completed, e.PerCompleted, e.Properties,
 	).Scan(&parentID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
@@ -401,36 +402,36 @@ func (r *repository) createEvent(
 		}
 	}
 
-	var customProps []models.CustomProp
-	for k, v := range event.Props {
-		if strings.HasPrefix(k, "X-") {
-			var custom models.CustomProp
-
-			custom.ParentID = parentID
-			custom.Name = v[0].Name
-			custom.ParamName = string(v[0].ValueType())
-			custom.Value = v[0].Value
-
-			customProps = append(customProps, custom)
-		}
-	}
-	r.logger.Debug("scanned custom prop", slog.Any("prop", customProps))
-
-	for _, cp := range customProps {
-		batch.Queue(`
-			INSERT INTO caldav.custom_property
-			(
-			 	calendar_file_uid,
-				event_component_id,
-				prop_name,
-				parameter_name,
-				value
-			) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (calendar_file_uid, event_component_id, prop_name) DO UPDATE SET
-				parameter_name = EXCLUDED.parameter_name,
-				value = EXCLUDED.value
-		`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
-	}
+	//var customProps []models.Prop
+	//for k, v := range event.Properties {
+	//	if strings.HasPrefix(k, "X-") {
+	//		var custom models.Prop
+	//
+	//		custom.ParentID = parentID
+	//		custom.Name = v[0].Name
+	//		custom.ParamName = string(v[0].ValueType())
+	//		custom.Value = v[0].Value
+	//
+	//		customProps = append(customProps, custom)
+	//	}
+	//}
+	//r.logger.Debug("scanned custom prop", slog.Any("prop", customProps))
+	//
+	//for _, cp := range customProps {
+	//	batch.Queue(`
+	//		INSERT INTO caldav.custom_property
+	//		(
+	//		 	calendar_file_uid,
+	//			event_component_id,
+	//			prop_name,
+	//			parameter_name,
+	//			value
+	//		) VALUES ($1, $2, $3, $4, $5)
+	//		ON CONFLICT (calendar_file_uid, event_component_id, prop_name) DO UPDATE SET
+	//			parameter_name = EXCLUDED.parameter_name,
+	//			value = EXCLUDED.value
+	//	`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
+	//}
 
 	return nil
 }
@@ -473,12 +474,12 @@ func (r *repository) removeRecurrence(ctx context.Context, tx *postgres.Tx, pare
 	for _, childID := range childEvents {
 		r.logger.Debug("postgres.createEvent delete recurrence", slog.Int("childID", childID))
 
-		_, err = tx.Exec(ctx, `DELETE FROM caldav.custom_property WHERE event_component_id = $1`, childID)
-		if err != nil {
-			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.createEvent", logger.Err(err))
-			return err
-		}
+		//_, err = tx.Exec(ctx, `DELETE FROM caldav.custom_property WHERE event_component_id = $1`, childID)
+		//if err != nil {
+		//	err = r.client.ToPgErr(err)
+		//	r.logger.Error("postgres.createEvent", logger.Err(err))
+		//	return err
+		//}
 		_, err = tx.Exec(ctx, `DELETE FROM caldav.event_component WHERE id = $1`, childID)
 		if err != nil {
 			err = r.client.ToPgErr(err)
@@ -536,7 +537,8 @@ func (r *repository) GetCalendar(
 			categories,
 			event_transparency,
 			todo_completed,
-			todo_percent_complete
+			todo_percent_complete,
+			properties
 		FROM caldav.event_component
 		WHERE calendar_file_uid = $1
 	`, uid)
@@ -555,44 +557,45 @@ func (r *repository) GetCalendar(
 			&event.Summary, &event.Description, &event.Url, &event.Organizer, &event.Start, &event.End,
 			&event.Duration, &event.AllDay, &event.Class, &event.Loc, &event.Priority, &event.Sequence,
 			&event.Status, &event.Categories, &event.Transparent, &event.Completed, &event.PerCompleted,
+			&event.Properties,
 		); err != nil {
 			err = r.client.ToPgErr(err)
 			r.logger.Error("postgres.GetCalendar", logger.Err(err))
 			return nil, err
 		}
 
-		subrows, err := r.client.Pool.Query(ctx, `
-			SELECT
-				prop_name,
-				parameter_name,
-				value
-			FROM
-				caldav.custom_property
-			WHERE
-				calendar_file_uid = $1
-				AND event_component_id = $2
-		`, uid, eventID)
-		if err != nil {
-			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.GetCalendar", logger.Err(err))
-			return nil, err
-		}
-
-		for subrows.Next() {
-			var prop models.CustomProp
-
-			err = subrows.Scan(
-				&prop.Name,
-				&prop.ParamName,
-				&prop.Value,
-			)
-			if err != nil {
-				err = r.client.ToPgErr(err)
-				r.logger.Error("postgres.GetCalendar", logger.Err(err))
-				return nil, err
-			}
-			event.CustomProps = append(event.CustomProps, prop)
-		}
+		//subrows, err := r.client.Pool.Query(ctx, `
+		//	SELECT
+		//		prop_name,
+		//		parameter_name,
+		//		value
+		//	FROM
+		//		caldav.custom_property
+		//	WHERE
+		//		calendar_file_uid = $1
+		//		AND event_component_id = $2
+		//`, uid, eventID)
+		//if err != nil {
+		//	err = r.client.ToPgErr(err)
+		//	r.logger.Error("postgres.GetCalendar", logger.Err(err))
+		//	return nil, err
+		//}
+		//
+		//for subrows.Next() {
+		//	var prop models.Prop
+		//
+		//	err = subrows.Scan(
+		//		&prop.Name,
+		//		&prop.ParamName,
+		//		&prop.Value,
+		//	)
+		//	if err != nil {
+		//		err = r.client.ToPgErr(err)
+		//		r.logger.Error("postgres.GetCalendar", logger.Err(err))
+		//		return nil, err
+		//	}
+		//	event.CustomProps = append(event.CustomProps, prop)
+		//}
 
 		var rs models.RecurrenceSet
 		recurrenceID, err := r.scanRecurrence(ctx, eventID, &rs)
@@ -600,7 +603,7 @@ func (r *repository) GetCalendar(
 			return nil, err
 		}
 
-		subrows, err = r.client.Pool.Query(ctx, `
+		subrows, err := r.client.Pool.Query(ctx, `
 			SELECT
 				event_component_id,
 				exception_date,
