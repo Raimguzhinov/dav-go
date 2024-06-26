@@ -296,3 +296,11 @@ func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
 	//delete(b.objectMap, path)
 	return nil
 }
+
+func (b *backend) GetPrivileges(ctx context.Context) []string {
+	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
+}
+
+func (b *backend) GetCalendarPrivileges(ctx context.Context, cal *caldav.Calendar) []string {
+	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
+}

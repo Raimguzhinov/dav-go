@@ -200,6 +200,10 @@ func (b *backend) DeleteAddressObject(ctx context.Context, urlPath string) error
 	return nil
 }
 
-func (b *backend) GetCurrentUserAddressBookPrivilege(ctx context.Context, ab *carddav.AddressBook) ([]string, error) {
-	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}, nil
+func (b *backend) GetPrivileges(ctx context.Context) []string {
+	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
+}
+
+func (b *backend) GetAddressBookPrivileges(ctx context.Context, ab *carddav.AddressBook) []string {
+	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
