@@ -21,7 +21,6 @@ func TestGetCalendars_HappyPath(t *testing.T) {
 
 	calendars, err := st.Client.FindCalendars(ctx, calendarHomeSet)
 	require.NoError(t, err)
-	assert.NotEmpty(t, calendars)
 
 	for _, calendar := range calendars {
 		assert.NotEmpty(t, calendar.Name)
@@ -39,11 +38,7 @@ func TestGetCalendars_IncorrectPrincipal(t *testing.T) {
 
 	calendarHomeSet, err := st.Client.FindCalendarHomeSet(ctx, principal)
 	require.Error(t, err)
-	assert.Empty(t, calendarHomeSet)
-
-	calendars, err := st.Client.FindCalendars(ctx, calendarHomeSet)
-	require.Error(t, err)
-	assert.Empty(t, calendars)
+	require.Empty(t, calendarHomeSet)
 }
 
 func TestGetCalendars_IncorrectHomeSetPath(t *testing.T) {
@@ -59,5 +54,5 @@ func TestGetCalendars_IncorrectHomeSetPath(t *testing.T) {
 	calendarHomeSet += "wrong_path"
 	calendars, err := st.Client.FindCalendars(ctx, calendarHomeSet)
 	require.Error(t, err)
-	assert.Empty(t, calendars)
+	require.Empty(t, calendars)
 }

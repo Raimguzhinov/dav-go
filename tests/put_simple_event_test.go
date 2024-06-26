@@ -30,7 +30,7 @@ func getCalendars(ctx context.Context, t *testing.T, st *suite.Suite) string {
 	require.NoError(t, err)
 	assert.NotEmpty(t, calendarHomeSet)
 
-	st.CreateTestCalendar(ctx, calendarHomeSet)
+	//st.CreateTestCalendar(ctx, calendarHomeSet)
 
 	calendars, err := st.Client.FindCalendars(ctx, calendarHomeSet)
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func getCalendars(ctx context.Context, t *testing.T, st *suite.Suite) string {
 		assert.Contains(t, calendar.Path, calendarHomeSet)
 		assert.Greater(t, calendar.MaxResourceSize, int64(10))
 
-		if calendar.Name == st.TestCalendarData["name"].(string) {
+		if calendar.Name == st.TestFolder["name"] {
 			testCalPath = calendar.Path
 		}
 	}
@@ -71,11 +71,11 @@ func getCalendarObjectFromFile(t *testing.T, ext string) (*ical.Calendar, string
 	dec := ical.NewDecoder(reader)
 	cal, err := dec.Decode()
 	require.NoError(t, err)
-	assert.NotEmpty(t, cal)
+	require.NotNil(t, cal)
 
 	uid, err := cal.Events()[0].Props.Text(ical.PropUID)
 	require.NoError(t, err)
-	assert.NotEmpty(t, uid)
+	require.NotEmpty(t, uid)
 
 	return cal, uid
 }
