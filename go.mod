@@ -3,7 +3,7 @@ module github.com/Raimguhinov/dav-go
 go 1.22.2
 
 require (
-	github.com/ceres919/go-webdav v0.0.0-20240626065119-ef0fe257605b
+	github.com/ceres919/go-webdav v0.0.0-20240626074214-3ca5a4483c22
 	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
 	github.com/fatih/color v1.17.0

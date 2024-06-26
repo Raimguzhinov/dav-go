@@ -6,6 +6,8 @@ github.com/ceres919/go-webdav v0.0.0-20240617051759-d1ccc1b01904 h1:IqT05gIhTPd/
 github.com/ceres919/go-webdav v0.0.0-20240617051759-d1ccc1b01904/go.mod h1:L561JlnenrvfmRJGhAfBWjjc5bOkuEwE3TLAAcKVcG4=
 github.com/ceres919/go-webdav v0.0.0-20240626065119-ef0fe257605b h1:X0xmvHvxinxqmEZaNpwscRn1OblUBz27aU8X/CoDdTc=
 github.com/ceres919/go-webdav v0.0.0-20240626065119-ef0fe257605b/go.mod h1:L561JlnenrvfmRJGhAfBWjjc5bOkuEwE3TLAAcKVcG4=
+github.com/ceres919/go-webdav v0.0.0-20240626074214-3ca5a4483c22 h1:1Ufrx3RFwWHvOedc+5m7Mu0zMbZ7bGxfU9cUbrbOMhE=
+github.com/ceres919/go-webdav v0.0.0-20240626074214-3ca5a4483c22/go.mod h1:L561JlnenrvfmRJGhAfBWjjc5bOkuEwE3TLAAcKVcG4=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
