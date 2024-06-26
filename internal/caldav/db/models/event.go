@@ -1,6 +1,8 @@
 package models
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -29,8 +31,8 @@ type Event struct {
 	Sequence            pgtype.Uint32    `json:"sequence,omitempty"`
 	Completed           pgtype.Uint32    `json:"completed,omitempty"`
 	PerCompleted        pgtype.Uint32    `json:"perCompleted,omitempty"`
-	CustomProps         []CustomProp     `json:"customProps,omitempty"`
 	RecurrenceSet       *RecurrenceSet   `json:"recurrenceSet,omitempty"`
+	Properties          map[string]any   `json:"props,omitempty"`
 	NotDeletedException string           `json:"notDeletedException,omitempty"`
 }
 
@@ -61,6 +63,7 @@ func ScanEvent(event *ical.Component) *Event {
 		Sequence:     intValue(event, ical.PropSequence),
 		Completed:    intValue(event, ical.PropCompleted),
 		PerCompleted: intValue(event, ical.PropPercentComplete),
+		Properties:   make(map[string]any),
 	}
 
 	switch event.Name {
@@ -77,6 +80,12 @@ func ScanEvent(event *ical.Component) *Event {
 			e.Transparent = BitIsSet
 		case "TRANSPARENT":
 			e.Transparent = BitNone
+		}
+	}
+
+	for k, v := range event.Props {
+		if strings.HasPrefix(k, "X-") {
+			e.Properties[v[0].Name] = v[0].Value
 		}
 	}
 
@@ -122,8 +131,29 @@ func (c *Event) ToDomain(uid string) *ical.Component {
 		setTextValue(calEvent, ical.PropTransparency, pgtype.Text{String: "TRANSPARENT", Valid: true})
 	}
 
-	for _, custom := range c.CustomProps {
-		calEvent.Props.Set(custom.ToDomain())
+	for k, v := range c.Properties {
+		custom := ical.NewProp(k)
+		switch v.(type) {
+		case string:
+			custom.SetValueType(ical.ValueText)
+			custom.Value = v.(string)
+		case int:
+			custom.SetValueType(ical.ValueInt)
+			custom.Value = strconv.Itoa(v.(int))
+		case float64:
+			custom.SetValueType(ical.ValueFloat)
+			custom.Value = strconv.FormatFloat(v.(float64), 'f', -1, 64)
+		case time.Time:
+			custom.SetValueType(ical.ValueDateTime)
+			custom.Value = v.(time.Time).UTC().Format(datetimeUTCFormat)
+		case bool:
+			custom.SetValueType(ical.ValueBool)
+			custom.Value = strconv.FormatBool(v.(bool))
+		default:
+			custom.SetValueType(ical.ValueDefault)
+			custom.Value = v.(string)
+		}
+		calEvent.Props.Set(custom)
 	}
 
 	rs, exString := c.RecurrenceSet.ToDomain()

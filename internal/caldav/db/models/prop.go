@@ -17,20 +17,6 @@ var (
 	BitIsSet = pgtype.Text{String: "1", Valid: true}
 )
 
-type CustomProp struct {
-	ParentID  int    `json:"parentID"`
-	Name      string `json:"name"`
-	ParamName string `json:"paramName"`
-	Value     string `json:"value"`
-}
-
-func (cp *CustomProp) ToDomain() *ical.Prop {
-	custom := ical.NewProp(cp.Name)
-	custom.SetValueType(ical.ValueType(cp.ParamName))
-	custom.Value = cp.Value
-	return custom
-}
-
 func textValue(event *ical.Component, propName string) pgtype.Text {
 	prop := event.Props.Get(propName)
 	if prop == nil {

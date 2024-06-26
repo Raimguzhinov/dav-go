@@ -7,7 +7,7 @@ CREATE TYPE caldav.calendar_type AS ENUM ('VEVENT', 'VTODO', 'VJOURNAL');
 CREATE TABLE IF NOT EXISTS caldav.calendar_folder
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(100) NOT NULL,
+    name        VARCHAR(255) NOT NULL,
     description TEXT                   DEFAULT NULL,
     types       caldav.calendar_type[] DEFAULT ARRAY ['VEVENT']::caldav.calendar_type[],
     max_size    INT                    DEFAULT 4096
@@ -19,40 +19,37 @@ VALUES ('Default Calendar', ARRAY ['VEVENT', 'VTODO', 'VJOURNAL']::caldav.calend
 CREATE TABLE IF NOT EXISTS caldav.access
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_folder_id BIGINT      NOT NULL,
+    calendar_folder_id BIGINT UNIQUE REFERENCES caldav.calendar_folder (id) ON DELETE CASCADE,
     user_id            VARCHAR(50) NOT NULL,
     owner              BIT         NOT NULL,
     read               BIT         NOT NULL,
-    write              BIT         NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
+    write              BIT         NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS caldav.calendar_file
 (
     uid                UUID PRIMARY KEY,
-    calendar_folder_id BIGINT      NOT NULL,
+    calendar_folder_id BIGINT REFERENCES caldav.calendar_folder (id) ON DELETE CASCADE,
     etag               VARCHAR(40) NOT NULL, -- SHA-1 hash encoded in base64
     created_at         TIMESTAMP   NOT NULL,
     modified_at        TIMESTAMP   NOT NULL,
-    size               INT         NOT NULL,
-    CONSTRAINT fk_calendar_folder FOREIGN KEY (calendar_folder_id) REFERENCES caldav.calendar_folder (id)
+    size               INT         NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS caldav.calendar_property
 (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_file_uid UUID         NOT NULL,
+    calendar_file_uid UUID UNIQUE REFERENCES caldav.calendar_file (uid) ON DELETE CASCADE,
     version           VARCHAR(5)   NOT NULL,
     product           VARCHAR(100) NOT NULL,
     scale             VARCHAR(30),
-    method            VARCHAR(30),
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid)
+    method            VARCHAR(30)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.event_component
 (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_file_uid     UUID      NOT NULL,
+    calendar_file_uid     UUID REFERENCES caldav.calendar_file (uid) ON DELETE CASCADE,
     component_type        BIT       NOT NULL,
     date_timestamp        TIMESTAMP NOT NULL,
     created_at            TIMESTAMP NOT NULL,
@@ -68,43 +65,29 @@ CREATE TABLE IF NOT EXISTS caldav.event_component
     class                 VARCHAR(50),
     location              VARCHAR(255),
     priority              SMALLINT,
-    sequence              INT,
+    sequence              INT DEFAULT 0,
     status                VARCHAR(50),
     categories            VARCHAR(255),
     event_transparency    BIT,
     todo_completed        DATE,
     todo_percent_complete SMALLINT,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
+    properties            JSONB,
     UNIQUE (calendar_file_uid, created_at)
-);
-
-CREATE TABLE IF NOT EXISTS caldav.custom_property
-(
-    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT       NOT NULL,
-    calendar_file_uid  UUID         NOT NULL,
-    prop_name          VARCHAR(50)  NOT NULL,
-    parameter_name     VARCHAR(50),
-    value              VARCHAR(512) NOT NULL,
-    CONSTRAINT fk_calendar_file FOREIGN KEY (calendar_file_uid) REFERENCES caldav.calendar_file (uid),
-    CONSTRAINT fk_parent FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id),
-    UNIQUE (calendar_file_uid, event_component_id, prop_name)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attachment
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT NOT NULL UNIQUE,
+    event_component_id BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
     media_type         VARCHAR(255),
     external_url       TEXT,
-    content            BYTEA,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
+    content            BYTEA
 );
 
 CREATE TABLE IF NOT EXISTS caldav.attendee
 (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id   BIGINT NOT NULL UNIQUE,
+    event_component_id   BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
     email                VARCHAR(255),
     common_name          VARCHAR(50),
     directory_entry_ref  TEXT,
@@ -115,14 +98,13 @@ CREATE TABLE IF NOT EXISTS caldav.attendee
     delegated_to         VARCHAR(50),
     rsvp                 BIT,
     participation_role   VARCHAR(15),
-    participation_status VARCHAR(15),
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
+    participation_status VARCHAR(15)
 );
 
 CREATE TABLE IF NOT EXISTS caldav.alarm
 (
     id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id        BIGINT      NOT NULL UNIQUE,
+    event_component_id        BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
     action                    VARCHAR(15) NOT NULL,
     trigger_absolute_datetime DATE,
     trigger_relative_offset   BIGINT,
@@ -130,14 +112,13 @@ CREATE TABLE IF NOT EXISTS caldav.alarm
     summary                   VARCHAR(255),
     description               TEXT,
     duration                  BIGINT,
-    repeat                    INT,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
+    repeat                    INT
 );
 
 CREATE TABLE IF NOT EXISTS caldav.recurrence
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT NOT NULL UNIQUE,
+    event_component_id BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
     interval           INT,
     until              DATE,
     count              INT,
@@ -147,19 +128,16 @@ CREATE TABLE IF NOT EXISTS caldav.recurrence
     by_month           SMALLINT,
     period_day         SMALLINT,
     by_set_pos         INT[],
-    this_and_future    BIT,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id)
+    this_and_future    BIT
 );
 
 CREATE TABLE IF NOT EXISTS caldav.recurrence_exception
 (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id BIGINT    NOT NULL,
-    recurrence_id      BIGINT    NOT NULL,
+    event_component_id BIGINT REFERENCES caldav.event_component (id) ON DELETE CASCADE,
+    recurrence_id      BIGINT REFERENCES caldav.recurrence (id) ON DELETE CASCADE,
     exception_date     TIMESTAMP NOT NULL,
     deleted_recurrence BIT       NOT NULL,
-    CONSTRAINT fk_event_component FOREIGN KEY (event_component_id) REFERENCES caldav.event_component (id),
-    CONSTRAINT fk_recurrence FOREIGN KEY (recurrence_id) REFERENCES caldav.recurrence (id),
     UNIQUE (recurrence_id, exception_date)
 );
 
@@ -184,7 +162,6 @@ DECLARE
     v_support_folder_id BIGINT;
     v_current_etag      VARCHAR(40);
 BEGIN
-    -- Получаем ID папки календаря по типу
     SELECT f.id
     INTO
         v_support_folder_id
@@ -192,12 +169,10 @@ BEGIN
     WHERE f.id = p_calendar_folder_id
       AND p_calendar_folder_type = ANY (f.types);
 
-    -- Проверяем, поддерживает ли папка данный тип
     IF v_support_folder_id IS DISTINCT FROM p_calendar_folder_id THEN
         RAISE EXCEPTION 'Invalid folder type provided for folder: %', p_calendar_folder_id;
     END IF;
 
-    -- Проверяем, существует ли запись в таблице calendar_file
     SELECT etag
     INTO
         v_current_etag
@@ -205,17 +180,14 @@ BEGIN
     WHERE uid = p_calendar_uid;
 
     IF FOUND THEN
-        -- Если запись существует и установлен If-None-Match, то возвращаем ошибку
         IF p_if_none_match THEN
             RAISE EXCEPTION 'Precondition failed: If-None-Match header is set and resource exists';
         END IF;
 
-        -- Если запись существует и установлен If-Match, проверяем ETag
         IF p_if_match AND v_current_etag IS DISTINCT FROM p_want_etag THEN
             RAISE EXCEPTION 'Precondition failed: If-Match header is set and ETag does not match';
         END IF;
 
-        -- Обновляем запись
         UPDATE
             caldav.calendar_file
         SET etag        = p_etag,
@@ -223,14 +195,12 @@ BEGIN
             size        = p_size
         WHERE uid = p_calendar_uid;
     ELSE
-        -- Если запись не существует и установлен If-Match, то возвращаем ошибку
         IF p_if_match THEN
             RAISE EXCEPTION 'Precondition failed: If-Match header is set and resource does not exist';
         END IF;
 
-        -- Вставляем новую запись
         INSERT INTO caldav.calendar_file (uid, calendar_folder_id, etag, created_at, modified_at, size)
-        VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, now()::timestamp, now()::timestamp, p_size);
+        VALUES (p_calendar_uid, p_calendar_folder_id, p_etag, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, p_size);
 
         INSERT INTO caldav.calendar_property (calendar_file_uid, version, product, scale, method)
         VALUES (p_calendar_uid, p_version, p_product, p_scale, p_method);
@@ -244,17 +214,19 @@ $$
 BEGIN
     SELECT COALESCE(MAX(sequence), 0)
     FROM caldav.event_component
-    WHERE event_component.calendar_file_uid = NEW.calendar_file_uid
+    WHERE calendar_file_uid = NEW.calendar_file_uid
     INTO NEW.sequence;
-    NEW.sequence = NEW.sequence + 1;
+
+    NEW.sequence := NEW.sequence + 1;
     RETURN NEW;
 END;
 $$
     LANGUAGE 'plpgsql';
 CREATE TRIGGER sequence_update_trigger
-    BEFORE INSERT OR UPDATE
+    BEFORE UPDATE
     ON caldav.event_component
     FOR EACH ROW
+    WHEN ( OLD.last_modified_at IS DISTINCT FROM NEW.last_modified_at )
 EXECUTE PROCEDURE sequence_update_trigger_fnc();
 
 CREATE OR REPLACE FUNCTION recurrence_changed_update_trigger_fnc()
@@ -285,12 +257,6 @@ $$
 CREATE TRIGGER recurrence_ex_update_trigger
     BEFORE INSERT OR UPDATE
     ON caldav.recurrence_exception
-    FOR EACH ROW
-EXECUTE PROCEDURE recurrence_changed_update_trigger_fnc();
-
-CREATE TRIGGER custom_property_update_trigger
-    BEFORE INSERT OR UPDATE
-    ON caldav.custom_property
     FOR EACH ROW
 EXECUTE PROCEDURE recurrence_changed_update_trigger_fnc();
 
