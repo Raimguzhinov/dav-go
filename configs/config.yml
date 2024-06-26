@@ -10,7 +10,7 @@ logger:
   rollbar_env: 'dav-go'
 
 postgres:
-  pool_max: 2
+  pool_max: 4
 
 grpc:
   ip: '0.0.0.0'
@@ -18,7 +18,7 @@ grpc:
 
 http:
   ip: '0.0.0.0'
-  port: '8081'
+  port: '8082'
   timeout: 4s
   idle_timeout: 60s
   user: 'admin'

@@ -5,20 +5,37 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Raimguhinov/dav-go/internal/config"
+	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type Suite struct {
 	*testing.T
-	Cfg              *config.Config
-	Client           *caldav.Client
-	TestCalendarData map[string]any
+	Cfg        *config.Config
+	Client     *caldav.Client
+	TestFolder map[string]string
+}
+
+var oncePg *postgres.Postgres
+var once sync.Once
+
+func getPg(t *testing.T, cfg *config.Config) *postgres.Postgres {
+	once.Do(func() {
+		var err error
+		oncePg, err = postgres.New(context.Background(), nil, cfg.PG.URL,
+			postgres.ConnTimeout(cfg.HTTP.IdleTimout), postgres.MaxPoolSize(1000),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	return oncePg
 }
 
 func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
@@ -26,50 +43,21 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 	t.Parallel()
 
 	cfg := config.GetConfig()
-	ctx, cancel := context.WithCancel(context.Background()) //, cfg.HTTP.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.Timeout)
 
 	// Test Calendar
-	testCalendarData := map[string]any{
+	testFolder := map[string]string{
 		"name":        fmt.Sprintf("Private Calendar - UID:%s for (%s)", uuid.New(), t.Name()),
 		"description": "Protei Calendar",
-		"types":       []string{"VEVENT", "VTODO", "VJOURNAL"},
-		"max_size":    int64(4096),
 	}
 
-	conn, err := pgx.Connect(context.Background(), cfg.PG.URL)
+	pg := getPg(t, cfg)
+
+	_, err := pg.Pool.Exec(context.Background(), `INSERT INTO caldav.calendar_folder (name) VALUES ($1)`,
+		testFolder["name"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.Ping(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		t.Helper()
-		cancel()
-
-		_, err = conn.Exec(context.Background(), `
-			INSERT INTO caldav.test_cases (calendar_folder_id, calendar_file_uid, event_component_id, calendar_property_id,
-			                               custom_property_id, recurrence_id, recurrence_exception_id)
-			SELECT cfo.id, cf.uid, ec.id, cp.id, cup.id, rc.id, re.id
-			FROM caldav.calendar_folder cfo
-			         JOIN caldav.calendar_file cf ON cfo.id = cf.calendar_folder_id
-			         LEFT JOIN caldav.event_component ec ON cf.uid = ec.calendar_file_uid
-			         JOIN caldav.calendar_property cp on cf.uid = cp.calendar_file_uid
-			         LEFT JOIN caldav.custom_property cup on cf.uid = cup.calendar_file_uid
-			         LEFT JOIN caldav.recurrence rc on ec.id = rc.event_component_id
-			         LEFT JOIN caldav.recurrence_exception re on rc.id = re.recurrence_id
-			WHERE cfo.name = $1
-			  AND cfo.description = $2
-			  AND cfo.types = $3 
-			  AND cfo.max_size = $4
-		`, testCalendarData["name"].(string), testCalendarData["description"].(string),
-			testCalendarData["types"].([]string), testCalendarData["max_size"].(int64),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
 
 	httpClient := webdav.HTTPClient(&http.Client{})
 	if withAuth {
@@ -80,11 +68,23 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 		t.Fatal(err)
 	}
 
+	t.Cleanup(func() {
+		t.Helper()
+		cancel()
+
+		_ = pg
+		_, err := pg.Pool.Exec(context.Background(), `DELETE FROM caldav.calendar_folder WHERE name = $1`,
+			testFolder["name"])
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	return ctx, &Suite{
-		T:                t,
-		Cfg:              cfg,
-		Client:           client,
-		TestCalendarData: testCalendarData,
+		T:          t,
+		Cfg:        cfg,
+		Client:     client,
+		TestFolder: testFolder,
 	}
 }
 
@@ -103,11 +103,14 @@ func (s *Suite) CreateTestCalendar(ctx context.Context, calendarHomeSet string) 
 		    </A:prop>
 		  </A:set>
 		</A:mkcol>
-		`, s.TestCalendarData["name"].(string), s.TestCalendarData["description"].(string),
+		`, s.TestFolder["name"], s.TestFolder["description"],
 	)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("MKCOL", fmt.Sprintf("http://%s:%s", s.Cfg.HTTP.IP, s.Cfg.HTTP.Port)+calendarHomeSet+"1/", strings.NewReader(reportCalendarData))
+	req, err := http.NewRequest("MKCOL", fmt.Sprintf(
+		"http://%s:%s%s%d/", s.Cfg.HTTP.IP, s.Cfg.HTTP.Port, calendarHomeSet, 777),
+		strings.NewReader(reportCalendarData),
+	)
 	if err != nil {
 		s.Fatal(err)
 	}

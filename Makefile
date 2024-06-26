@@ -37,16 +37,6 @@ migrate-down: ### migration down
 	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_$(BACKEND)' down
 .PHONY: migrate-down
 
-test-migrate-up:
-	migrate -path tests/migrations -database \
-	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_test' up
-.PHONY: test-migrate-up
-
-test-migrate-down:
-	migrate -path tests/migrations -database \
-	'$(PG_URL)?sslmode=disable&x-migrations-table=schema_migrations_test' down
-.PHONY: test-migrate-down
-
 test:
 	CONFIG_PATH=$(shell pwd)/configs/config.yml \
 	TESTCASES_DIR=$(shell pwd)/tests/cases \
