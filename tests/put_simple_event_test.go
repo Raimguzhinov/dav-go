@@ -110,3 +110,33 @@ func TestPutSimpleEvent_HappyPath(t *testing.T) {
 
 	assert.Equal(t, fileOutBuf.String(), respBuf.String())
 }
+
+func TestPutSimpleEvent_WithoutProdID(t *testing.T) {
+	ctx, st := suite.New(t, true)
+	testCalPath := getCalendars(ctx, t, st)
+	calIn, uid := getCalendarObjectFromFile(t, InputExt)
+
+	objPath := path.Join(testCalPath, uid+IcsExt)
+	reqObj, err := st.Client.PutCalendarObject(ctx, objPath, calIn)
+	require.Error(t, err)
+	assert.Nil(t, reqObj)
+
+	respObj, err := st.Client.GetCalendarObject(ctx, objPath)
+	require.Error(t, err)
+	assert.Nil(t, respObj)
+}
+
+func TestPutSimpleEvent_WithoutVersion(t *testing.T) {
+	ctx, st := suite.New(t, true)
+	testCalPath := getCalendars(ctx, t, st)
+	calIn, uid := getCalendarObjectFromFile(t, InputExt)
+
+	objPath := path.Join(testCalPath, uid+IcsExt)
+	reqObj, err := st.Client.PutCalendarObject(ctx, objPath, calIn)
+	require.Error(t, err)
+	assert.Nil(t, reqObj)
+
+	respObj, err := st.Client.GetCalendarObject(ctx, objPath)
+	require.Error(t, err)
+	assert.Nil(t, respObj)
+}
