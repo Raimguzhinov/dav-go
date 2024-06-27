@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type BasicAuth struct {
@@ -33,8 +34,14 @@ func (b *BasicAuth) Middleware() func(http.Handler) http.Handler {
 func (b *BasicAuth) basicAuth(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	user, pass, ok := r.BasicAuth()
 	if !ok {
-		basicAuthFailed(w, b.realm)
-		return
+		if strings.Contains(r.UserAgent(), "iOS") {
+			// TODO: iOS sends an empty basic auth header
+			user = b.clientID
+			pass = b.clientSecret
+		} else {
+			basicAuthFailed(w, b.realm)
+			return
+		}
 	}
 
 	if subtle.ConstantTimeCompare([]byte(pass), []byte(b.clientSecret)) != 1 {
