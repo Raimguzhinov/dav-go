@@ -45,9 +45,6 @@ func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config, 
 		Debug:              cfg.HTTP.CORS.Debug,
 		Logger:             log,
 	}).Handler)
-	//s.Use(middleware.BasicAuth(cfg.App.Name, map[string]string{
-	//	cfg.HTTP.User: cfg.HTTP.Password,
-	//}))
 	s.Use(auth.Middleware())
 	s.Use(middleware.Recoverer)
 
@@ -71,7 +68,7 @@ func SetupRouter(log *logger.Logger, pg *postgres.Postgres, cfg *config.Config, 
 	s.Mount("/", &handler)
 	s.Mount("/.well-known/caldav", &caldavHandler)
 	s.Mount("/.well-known/carddav", &carddavHandler)
-	s.Mount("/{user}/"+cfg.CardDAVPrefix, &carddavHandler)
+	s.Mount("/{user}/"+cfg.App.CardDAVPrefix, &carddavHandler)
 	s.Mount("/{user}/"+cfg.App.CalDAVPrefix, &caldavHandler)
 
 	return s

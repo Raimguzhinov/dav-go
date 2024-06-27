@@ -16,7 +16,7 @@ type userPrincipalBackend struct{}
 func (u *userPrincipalBackend) CurrentUserPrincipal(ctx context.Context) (string, error) {
 	authCtx, ok := auth.FromContext(ctx)
 	if !ok {
-		panic("Invalid data in auth context!")
+		return "", fmt.Errorf("unauthenticated requests are not supported")
 	}
 	if authCtx == nil {
 		return "", fmt.Errorf("unauthenticated requests are not supported")
