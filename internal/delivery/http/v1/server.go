@@ -1,5 +1,5 @@
-// Package httpserver implements HTTP server.
-package httpserver
+// Package v1 implements HTTP server.
+package http
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type Server struct {
 }
 
 // New -.
-func New(handler http.Handler, opts ...Option) *Server {
+func NewServer(handler http.Handler, opts ...Option) *Server {
 	httpServer := &http.Server{
 		Handler:      handler,
 		ReadTimeout:  _defaultReadTimeout,
@@ -41,12 +41,10 @@ func New(handler http.Handler, opts ...Option) *Server {
 		opt(s)
 	}
 
-	s.start()
-
 	return s
 }
 
-func (s *Server) start() {
+func (s *Server) Start() {
 	go func() {
 		s.notify <- s.server.ListenAndServe()
 		close(s.notify)

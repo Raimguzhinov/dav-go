@@ -10,7 +10,7 @@ import (
 
 	"github.com/Raimguhinov/dav-go/internal/auth"
 	"github.com/Raimguhinov/dav-go/internal/config"
-	"github.com/Raimguhinov/dav-go/pkg/httpserver"
+	"github.com/Raimguhinov/dav-go/internal/delivery/http/v1"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 )
@@ -33,7 +33,8 @@ func Run(cfg *config.Config) {
 
 	// HTTP Server
 	router := SetupRouter(log, pg, cfg, authProvider)
-	httpServer := httpserver.New(router, httpserver.Port(cfg.HTTP.Port))
+	httpServer := http.NewServer(router, http.Port(cfg.HTTP.Port))
+	httpServer.Start()
 
 	// Waiting signal
 	interrupt := make(chan os.Signal, 1)

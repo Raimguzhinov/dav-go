@@ -6,8 +6,8 @@ import (
 
 	"github.com/Raimguhinov/dav-go/internal/auth"
 	"github.com/Raimguhinov/dav-go/internal/config"
+	mwlogger "github.com/Raimguhinov/dav-go/internal/delivery/http/middleware/logger"
 	"github.com/Raimguhinov/dav-go/internal/usecase"
-	mwlogger "github.com/Raimguhinov/dav-go/pkg/httpserver/middleware/logger"
 	"github.com/Raimguhinov/dav-go/pkg/logger"
 	"github.com/Raimguhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav/caldav"
