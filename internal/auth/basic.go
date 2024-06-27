@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 )
@@ -30,12 +31,17 @@ func (b *BasicAuth) Middleware() func(http.Handler) http.Handler {
 }
 
 func (b *BasicAuth) basicAuth(next http.Handler, w http.ResponseWriter, r *http.Request) {
-	user, password, ok := r.BasicAuth()
-	if !ok || user != b.clientID || password != b.clientSecret {
-		w.Header().Add("WWW-Authenticate", `Basic realm="Please provide your system credentials", charset="UTF-8"`)
-		http.Error(w, "HTTP Basic auth is required", http.StatusUnauthorized)
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		basicAuthFailed(w, b.realm)
 		return
 	}
+
+	if subtle.ConstantTimeCompare([]byte(pass), []byte(b.clientSecret)) != 1 {
+		basicAuthFailed(w, b.realm)
+		return
+	}
+
 	authCtx := AuthContext{
 		AuthMethod: "basic",
 		UserName:   user,
@@ -43,4 +49,9 @@ func (b *BasicAuth) basicAuth(next http.Handler, w http.ResponseWriter, r *http.
 	ctx := NewContext(r.Context(), &authCtx)
 	r = r.WithContext(ctx)
 	next.ServeHTTP(w, r)
+}
+
+func basicAuthFailed(w http.ResponseWriter, realm string) {
+	w.Header().Add("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s"`, realm))
+	w.WriteHeader(http.StatusUnauthorized)
 }
