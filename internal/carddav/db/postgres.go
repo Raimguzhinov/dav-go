@@ -29,7 +29,7 @@ func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, addre
 
 	abUid, err := uuid.Parse(path.Clean(strings.TrimPrefix(addressbook.Path, homeSetPath)))
 	if err != nil {
-		r.logger.Error("postgres.CreateFolder", logger.Err(err))
+		r.logger.Error("postgres.CreateCalendar", logger.Err(err))
 		return err
 	}
 
@@ -41,7 +41,7 @@ func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, addre
 	`, abUid, addressbook.Name, addressbook.Description).Scan(&f.Uid)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.CreateFolder", logger.Err(err))
+		r.logger.Error("postgres.CreateCalendar", logger.Err(err))
 		return err
 	}
 	return nil

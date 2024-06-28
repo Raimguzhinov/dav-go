@@ -8,19 +8,14 @@ import (
 )
 
 type Repository interface {
-	CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error
-	FindFolders(ctx context.Context) ([]caldav.Calendar, error)
-	GetFileInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error)
-	PutObject(
-		ctx context.Context,
+	CreateCalendar(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error
+	FindCalendars(ctx context.Context) ([]caldav.Calendar, error)
+	GetCalendarObjectInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error)
+	UpgradeCalendarObject(ctx context.Context,
 		uid, eventType string,
 		object *caldav.CalendarObject,
 		opts *caldav.PutCalendarObjectOptions,
 	) (*caldav.CalendarObject, error)
 	GetCalendar(ctx context.Context, uid string, propFilter []string) (*ical.Calendar, error)
-	FindObjects(
-		ctx context.Context,
-		folderID int,
-		propFilter []string,
-	) ([]caldav.CalendarObject, error)
+	FindCalendarObjects(ctx context.Context, folderID int, propFilter []string) ([]caldav.CalendarObject, error)
 }

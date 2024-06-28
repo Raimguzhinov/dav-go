@@ -54,7 +54,7 @@ func (b *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	if calendar.MaxResourceSize == 0 || calendar.SupportedComponentSet == nil {
 		return b.createDefaultCalendar(ctx, calendar.Name)
 	}
-	if err := b.repo.CreateFolder(ctx, homeSetPath, calendar); err != nil {
+	if err := b.repo.CreateCalendar(ctx, homeSetPath, calendar); err != nil {
 		return err
 	}
 	return nil
@@ -73,7 +73,7 @@ func (b *backend) createDefaultCalendar(ctx context.Context, name string) error 
 }
 
 func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
-	cals, err := b.repo.FindFolders(ctx)
+	cals, err := b.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 }
 
 func (b *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
-	cals, err := b.repo.FindFolders(ctx)
+	cals, err := b.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (b *backend) GetCalendarObject(
 	if err != nil {
 		return nil, err
 	}
-	obj, err := b.repo.GetFileInfo(ctx, uid)
+	obj, err := b.repo.GetCalendarObjectInfo(ctx, uid)
 	if err != nil {
 		return nil, fmt.Errorf("object for path: %s not found", objPath)
 	}
@@ -170,7 +170,7 @@ func (b *backend) ListCalendarObjects(
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
 	}
-	objs, err := b.repo.FindObjects(ctx, folderID, propFilter)
+	objs, err := b.repo.FindCalendarObjects(ctx, folderID, propFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (b *backend) QueryCalendarObjects(
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
 	}
-	objs, err := b.repo.FindObjects(ctx, folderID, propFilter)
+	objs, err := b.repo.FindCalendarObjects(ctx, folderID, propFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (b *backend) PutCalendarObject(
 		ETag:          eTag,
 		ModTime:       time.Now().UTC(),
 	}
-	return b.repo.PutObject(ctx, uid, eventType, obj, opts)
+	return b.repo.UpgradeCalendarObject(ctx, uid, eventType, obj, opts)
 }
 
 func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {

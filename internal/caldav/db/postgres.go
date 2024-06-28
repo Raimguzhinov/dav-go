@@ -31,8 +31,8 @@ func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Rep
 	}
 }
 
-func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
-	r.logger.Debug("postgres.CreateFolder")
+func (r *repository) CreateCalendar(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error {
+	r.logger.Debug("postgres.CreateCalendar")
 
 	var f models.Folder
 
@@ -44,15 +44,15 @@ func (r *repository) CreateFolder(ctx context.Context, homeSetPath string, calen
 	`, calendar.Name, calendar.Description, calendar.SupportedComponentSet, calendar.MaxResourceSize).Scan(&f.ID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.CreateFolder", logger.Err(err))
+		r.logger.Error("postgres.CreateCalendar", logger.Err(err))
 		return err
 	}
 	calendar.Path = path.Join(homeSetPath, strconv.Itoa(f.ID))
 	return nil
 }
 
-func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error) {
-	r.logger.Debug("postgres.FindFolders")
+func (r *repository) FindCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+	r.logger.Debug("postgres.FindCalendars")
 
 	rows, err := r.client.Pool.Query(ctx, `
 		SELECT
@@ -70,7 +70,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	`)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.FindFolders", logger.Err(err))
+		r.logger.Error("postgres.FindCalendars", logger.Err(err))
 		return nil, err
 	}
 
@@ -81,7 +81,7 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 		err = rows.Scan(&f.ID, &f.Name, &f.Description, &f.Types, &f.Size)
 		if err != nil {
 			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.FindFolders", logger.Err(err))
+			r.logger.Error("postgres.FindCalendars", logger.Err(err))
 			return nil, err
 		}
 
@@ -90,8 +90,8 @@ func (r *repository) FindFolders(ctx context.Context) ([]caldav.Calendar, error)
 	return calendars, nil
 }
 
-func (r *repository) GetFileInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error) {
-	r.logger.Debug("postgres.GetFileInfo")
+func (r *repository) GetCalendarObjectInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error) {
+	r.logger.Debug("postgres.GetCalendarObjectInfo")
 
 	var calendar caldav.CalendarObject
 
@@ -106,20 +106,20 @@ func (r *repository) GetFileInfo(ctx context.Context, uid string) (*caldav.Calen
 		&calendar.ETag, &calendar.ModTime, &calendar.ContentLength,
 	); err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.GetFileInfo", logger.Err(err))
+		r.logger.Error("postgres.GetCalendarObjectInfo", logger.Err(err))
 		return nil, err
 	}
 
 	return &calendar, nil
 }
 
-func (r *repository) PutObject(
+func (r *repository) UpgradeCalendarObject(
 	ctx context.Context,
 	uid, eventType string,
 	object *caldav.CalendarObject,
 	opts *caldav.PutCalendarObjectOptions,
 ) (*caldav.CalendarObject, error) {
-	r.logger.Debug("postgres.PutObject")
+	r.logger.Debug("postgres.UpgradeCalendarObject")
 
 	ifNoneMatch := opts.IfNoneMatch.IsWildcard()
 	ifMatch := opts.IfMatch.IsSet()
@@ -155,7 +155,7 @@ func (r *repository) PutObject(
 	tx, err := r.client.NewTx(ctx)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.PutObject", logger.Err(err))
+		r.logger.Error("postgres.UpgradeCalendarObject", logger.Err(err))
 		return nil, err
 	}
 	defer func(tx *postgres.Tx, ctx context.Context) {
@@ -170,7 +170,7 @@ func (r *repository) PutObject(
 	)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.PutObject", logger.Err(err))
+		r.logger.Error("postgres.UpgradeCalendarObject", logger.Err(err))
 		return nil, err
 	}
 
@@ -201,7 +201,7 @@ func (r *repository) PutObject(
 
 	if err = tx.Commit(ctx); err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.PutObject", logger.Err(err))
+		r.logger.Error("postgres.UpgradeCalendarObject", logger.Err(err))
 		return nil, err
 	}
 	return object, nil
@@ -683,12 +683,12 @@ func (r *repository) scanRecurrence(ctx context.Context, eventID int, rs *models
 	return recurrenceID, nil
 }
 
-func (r *repository) FindObjects(
+func (r *repository) FindCalendarObjects(
 	ctx context.Context,
 	folderID int,
 	propFilter []string,
 ) ([]caldav.CalendarObject, error) {
-	r.logger.Debug("postgres.FindObjects")
+	r.logger.Debug("postgres.FindCalendarObjects")
 
 	var result []caldav.CalendarObject
 
@@ -703,7 +703,7 @@ func (r *repository) FindObjects(
 	`, &folderID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.FindObjects", logger.Err(err))
+		r.logger.Error("postgres.FindCalendarObjects", logger.Err(err))
 		return nil, err
 	}
 
@@ -718,7 +718,7 @@ func (r *repository) FindObjects(
 		)
 		if err != nil {
 			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.FindObjects", logger.Err(err))
+			r.logger.Error("postgres.FindCalendarObjects", logger.Err(err))
 			return nil, err
 		}
 
