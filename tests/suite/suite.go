@@ -72,12 +72,11 @@ func New(t *testing.T, withAuth bool) (context.Context, *Suite) {
 		t.Helper()
 		cancel()
 
-		_ = pg
-		_, err := pg.Pool.Exec(context.Background(), `DELETE FROM caldav.calendar_folder WHERE name = $1`,
-			testFolder["name"])
-		if err != nil {
-			t.Fatal(err)
-		}
+		//_, err := pg.Pool.Exec(context.Background(), `DELETE FROM caldav.calendar_folder WHERE name = $1`,
+		//	testFolder["name"])
+		//if err != nil {
+		//	t.Fatal(err)
+		//}
 	})
 
 	return ctx, &Suite{
