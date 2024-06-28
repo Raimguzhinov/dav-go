@@ -1,8 +1,6 @@
 package models
 
 import (
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +33,7 @@ type Event struct {
 	RecurrenceSet       *RecurrenceSet                    `json:"recurrenceSet,omitempty"`
 	Properties          map[string]map[ical.ValueType]any `json:"props,omitempty"`
 	NotDeletedException string                            `json:"notDeletedException,omitempty"`
+	Alarm               *Alarm                            `json:"alarm,omitempty"`
 }
 
 func ScanEvent(event *ical.Component) *Event {
@@ -86,51 +85,7 @@ func ScanEvent(event *ical.Component) *Event {
 
 	for k, v := range event.Props {
 		if strings.HasPrefix(k, "X-") {
-			icalValue := v[0].Value
-			typeValue := make(map[ical.ValueType]any)
-
-			switch v[0].ValueType() {
-			case ical.ValueText:
-				typeValue[ical.ValueText] = icalValue
-			case ical.ValueInt:
-				if intVal, err := strconv.Atoi(icalValue); err == nil {
-					val := intVal
-					typeValue[ical.ValueInt] = val
-				}
-			case ical.ValueFloat:
-				if floatVal, err := strconv.ParseFloat(icalValue, 64); err == nil {
-					val := floatVal
-					typeValue[ical.ValueFloat] = val
-				}
-			case ical.ValueBool:
-				if boolVal, err := strconv.ParseBool(icalValue); err == nil {
-					val := boolVal
-					typeValue[ical.ValueBool] = val
-				}
-			case ical.ValueTime, ical.ValueDateTime, ical.ValueDate:
-				if timeVal, err := time.Parse(datetimeUTCFormat, icalValue); err == nil {
-					val := timeVal
-					typeValue[ical.ValueDateTime] = val
-				}
-			case ical.ValueBinary:
-				typeValue[ical.ValueBinary] = icalValue
-			case ical.ValueDefault:
-				var val any
-				if timeVal, err := time.Parse(datetimeUTCFormat, icalValue); err == nil {
-					val = timeVal
-				} else if numVal, err := strconv.ParseFloat(icalValue, 64); err == nil {
-					val = numVal
-				} else if boolVal, err := strconv.ParseBool(icalValue); err == nil {
-					val = boolVal
-				} else {
-					val = icalValue
-				}
-				typeValue[ical.ValueDefault] = val
-			default:
-				typeValue[v[0].ValueType()] = icalValue
-			}
-
-			e.Properties[v[0].Name] = typeValue
+			e.Properties[v[0].Name] = toJSONFormat(v[0].Value, v[0].ValueType())
 		}
 	}
 
@@ -178,61 +133,7 @@ func (c *Event) ToDomain(uid string) *ical.Component {
 
 	for name, valueType := range c.Properties {
 		custom := ical.NewProp(name)
-
-		for typeName, icalValue := range valueType {
-			switch typeName {
-			case ical.ValueText:
-				custom.SetValueType(ical.ValueText)
-				custom.Value = icalValue.(string)
-			case ical.ValueInt:
-				custom.SetValueType(ical.ValueInt)
-				custom.Value = strconv.FormatFloat(icalValue.(float64), 'f', -1, 64)
-			case ical.ValueFloat:
-				custom.SetValueType(ical.ValueFloat)
-				custom.Value = strconv.FormatFloat(icalValue.(float64), 'f', -1, 64)
-			case ical.ValueBool:
-				custom.SetValueType(ical.ValueBool)
-				custom.Value = strconv.FormatBool(icalValue.(bool))
-			case ical.ValueTime, ical.ValueDateTime, ical.ValueDate:
-				custom.SetValueType(ical.ValueDateTime)
-				timeVal, _ := time.Parse(time.RFC3339, icalValue.(string))
-				custom.Value = timeVal.UTC().Format(datetimeUTCFormat)
-			case ical.ValueBinary:
-				custom.SetValueType(ical.ValueBinary)
-				custom.Value = icalValue.(string)
-			case ical.ValueDefault:
-				switch val := icalValue.(type) {
-				case int:
-					custom.SetValueType(ical.ValueInt)
-					custom.Value = strconv.Itoa(val)
-				case float64:
-					custom.SetValueType(ical.ValueFloat)
-					custom.Value = strconv.FormatFloat(val, 'f', -1, 64)
-				case bool:
-					custom.SetValueType(ical.ValueBool)
-					custom.Value = strconv.FormatBool(val)
-				case []byte:
-					custom.SetValueType(ical.ValueBinary)
-					custom.Value = string(val)
-				default:
-					isLetter := regexp.MustCompile(`^[a-zA-Z]+$`).MatchString
-					if timeVal, err := time.Parse(time.RFC3339, val.(string)); err == nil {
-						custom.SetValueType(ical.ValueDateTime)
-						custom.Value = timeVal.UTC().Format(datetimeUTCFormat)
-						break
-					} else if isLetter(val.(string)) {
-						custom.SetValueType(ical.ValueText)
-						custom.Value = val.(string)
-						break
-					}
-					custom.SetValueType(ical.ValueDefault)
-					custom.Value = val.(string)
-				}
-			default:
-				custom.SetValueType(typeName)
-				custom.Value = icalValue.(string)
-			}
-		}
+		fromJSONFormat(custom, valueType)
 		calEvent.Props.Set(custom)
 	}
 
