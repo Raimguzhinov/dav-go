@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/joho/godotenv"
 )
 
 type (
@@ -29,12 +30,12 @@ type (
 	}
 
 	HTTP struct {
-		IP         string        `yaml:"ip"           env-default:"0.0.0.0"`
-		Port       string        `yaml:"port"         env-default:"8082"`
+		IP         string        `yaml:"ip"           env-default:"0.0.0.0" env:"HTTP_SERVER_IP"`
+		Port       string        `yaml:"port"         env-default:"8082"    env:"HTTP_SERVER_PORT"`
 		Timeout    time.Duration `yaml:"timeout"      env-default:"4s"`
 		IdleTimout time.Duration `yaml:"idle_timeout" env-default:"60s"`
-		User       string        `yaml:"user"         env-required:"true"`
-		Password   string        `yaml:"password"     env-required:"true"    env:"HTTP_SERVER_PASSWORD"`
+		User       string        `yaml:"user"         env-required:"true"   env:"HTTP_SERVER_USER"`
+		Password   string        `yaml:"password"     env-required:"true"   env:"HTTP_SERVER_PASSWORD"`
 		CORS       struct {
 			AllowedMethods     []string `yaml:"allowed_methods"`
 			AllowedOrigins     []string `yaml:"allowed_origins"`
@@ -84,6 +85,11 @@ func GetConfig() *Config {
 		flag.Parse()
 
 		log.Print("config init")
+
+		err := godotenv.Load()
+		if err != nil {
+			log.Print("Error loading .env file")
+		}
 
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			configPath = os.Getenv(EnvConfigPathName)
