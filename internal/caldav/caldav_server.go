@@ -30,40 +30,40 @@ func New(
 	prefix string,
 	repository Repository,
 ) (caldav.Backend, error) {
-	b := &backend{
+	s := &backend{
 		UserPrincipalBackend: upBackend,
 		prefix:               prefix,
 		repo:                 repository,
 	}
-	//_ = b.createDefaultCalendar(context.Background())
-	return b, nil
+	//_ = s.createDefaultCalendar(context.Background())
+	return s, nil
 }
 
-func (b *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
-	upPath, err := b.CurrentUserPrincipal(ctx)
+func (s *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+	upPath, err := s.CurrentUserPrincipal(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	return path.Join(upPath, b.prefix) + "/", nil
+	return path.Join(upPath, s.prefix) + "/", nil
 }
 
-func (b *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
-	homeSetPath, err := b.CalendarHomeSetPath(ctx)
+func (s *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
+	homeSetPath, err := s.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return err
 	}
 	if calendar.MaxResourceSize == 0 || calendar.SupportedComponentSet == nil {
-		return b.createDefaultCalendar(ctx, calendar.Name)
+		return s.createDefaultCalendar(ctx, calendar.Name)
 	}
-	if err := b.repo.CreateCalendar(ctx, homeSetPath, calendar); err != nil {
+	if err := s.repo.CreateCalendar(ctx, homeSetPath, calendar); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *backend) createDefaultCalendar(ctx context.Context, name string) error {
-	if err := b.CreateCalendar(ctx, &caldav.Calendar{
+func (s *backend) createDefaultCalendar(ctx context.Context, name string) error {
+	if err := s.CreateCalendar(ctx, &caldav.Calendar{
 		Name:                  name,
 		Description:           "Protei Calendar",
 		MaxResourceSize:       4096,
@@ -74,14 +74,14 @@ func (b *backend) createDefaultCalendar(ctx context.Context, name string) error 
 	return nil
 }
 
-func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
-	cals, err := b.repo.FindCalendars(ctx)
+func (s *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+	cals, err := s.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	for i, cal := range cals {
-		homeSetPath, err := b.CalendarHomeSetPath(ctx)
+		homeSetPath, err := s.CalendarHomeSetPath(ctx)
 		if err != nil {
 			return make([]caldav.Calendar, 0), err
 		}
@@ -90,14 +90,14 @@ func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 	return cals, nil
 }
 
-func (b *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
-	cals, err := b.repo.FindCalendars(ctx)
+func (s *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
+	cals, err := s.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, cal := range cals {
-		homeSetPath, err := b.CalendarHomeSetPath(ctx)
+		homeSetPath, err := s.CalendarHomeSetPath(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (b *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Cale
 	return nil, fmt.Errorf("calendar for path: %s not found", urlPath)
 }
 
-func (b *backend) GetCalendarObject(
+func (s *backend) GetCalendarObject(
 	ctx context.Context,
 	objPath string,
 	req *caldav.CalendarCompRequest,
@@ -122,11 +122,11 @@ func (b *backend) GetCalendarObject(
 		return nil, fmt.Errorf("object for path: %s not found", objPath)
 	}
 
-	cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+	cal, err := s.repo.GetCalendar(ctx, uid, propFilter)
 	if err != nil {
 		return nil, err
 	}
-	obj, err := b.repo.GetCalendarObjectInfo(ctx, uid)
+	obj, err := s.repo.GetCalendarObjectInfo(ctx, uid)
 	if err != nil {
 		return nil, fmt.Errorf("object for path: %s not found", objPath)
 	}
@@ -157,7 +157,7 @@ func (b *backend) GetCalendarObject(
 	return obj, nil
 }
 
-func (b *backend) ListCalendarObjects(
+func (s *backend) ListCalendarObjects(
 	ctx context.Context,
 	urlPath string,
 	req *caldav.CalendarCompRequest,
@@ -167,12 +167,12 @@ func (b *backend) ListCalendarObjects(
 		propFilter = req.Props
 	}
 
-	homeSetPath, _ := b.CalendarHomeSetPath(ctx)
+	homeSetPath, _ := s.CalendarHomeSetPath(ctx)
 	folderID, err := strconv.Atoi(path.Base(urlPath))
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
 	}
-	objs, err := b.repo.FindCalendarObjects(ctx, folderID, propFilter)
+	objs, err := s.repo.FindCalendarObjects(ctx, folderID, propFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (b *backend) ListCalendarObjects(
 	for i, obj := range objs {
 		uid := strings.TrimSuffix(path.Base(obj.Path), ".ics")
 
-		cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+		cal, err := s.repo.GetCalendar(ctx, uid, propFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +191,7 @@ func (b *backend) ListCalendarObjects(
 	return objs, nil
 }
 
-func (b *backend) QueryCalendarObjects(
+func (s *backend) QueryCalendarObjects(
 	ctx context.Context,
 	urlPath string,
 	query *caldav.CalendarQuery,
@@ -201,12 +201,12 @@ func (b *backend) QueryCalendarObjects(
 		propFilter = query.CompRequest.Props
 	}
 
-	homeSetPath, _ := b.CalendarHomeSetPath(ctx)
+	homeSetPath, _ := s.CalendarHomeSetPath(ctx)
 	folderID, err := strconv.Atoi(path.Base(urlPath))
 	if err != nil {
 		return nil, fmt.Errorf("invalid folder_id: %s", urlPath)
 	}
-	objs, err := b.repo.FindCalendarObjects(ctx, folderID, propFilter)
+	objs, err := s.repo.FindCalendarObjects(ctx, folderID, propFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (b *backend) QueryCalendarObjects(
 	for i, obj := range objs {
 		uid := strings.TrimSuffix(path.Base(obj.Path), ".ics")
 
-		cal, err := b.repo.GetCalendar(ctx, uid, propFilter)
+		cal, err := s.repo.GetCalendar(ctx, uid, propFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +225,7 @@ func (b *backend) QueryCalendarObjects(
 	return caldav.Filter(query, objs)
 }
 
-func (b *backend) PutCalendarObject(
+func (s *backend) PutCalendarObject(
 	ctx context.Context,
 	objPath string,
 	calendar *ical.Calendar,
@@ -291,18 +291,18 @@ func (b *backend) PutCalendarObject(
 		ETag:          eTag,
 		ModTime:       time.Now().UTC(),
 	}
-	return b.repo.UpgradeCalendarObject(ctx, uid, eventType, obj, opts)
+	return s.repo.UpgradeCalendarObject(ctx, uid, eventType, obj, opts)
 }
 
-func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	//delete(b.objectMap, path)
+func (s *backend) DeleteCalendarObject(ctx context.Context, path string) error {
+	//delete(s.objectMap, path)
 	return nil
 }
 
-func (b *backend) GetPrivileges(ctx context.Context) []string {
+func (s *backend) GetPrivileges(ctx context.Context) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
 
-func (b *backend) GetCalendarPrivileges(ctx context.Context, cal *caldav.Calendar) []string {
+func (s *backend) GetCalendarPrivileges(ctx context.Context, cal *caldav.Calendar) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }

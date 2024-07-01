@@ -30,16 +30,16 @@ func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Reposi
 	}, nil
 }
 
-func (b *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
-	upPath, err := b.CurrentUserPrincipal(ctx)
+func (s *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
+	upPath, err := s.CurrentUserPrincipal(ctx)
 	if err != nil {
 		return "", err
 	}
-	return path.Join(upPath, b.prefix) + "/", nil
+	return path.Join(upPath, s.prefix) + "/", nil
 }
 
-func (b *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.AddressBook, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.AddressBook, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -53,26 +53,26 @@ func (b *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.Addres
 		Name:        "Contacts",
 		Description: "Default addressbook",
 	}
-	err = b.repo.CreateFolder(ctx, homeSetPath, &ab)
+	err = s.repo.CreateFolder(ctx, homeSetPath, &ab)
 	if err != nil {
 		return nil, err
 	}
 	return &ab, nil
 }
 
-func (b *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	addressbooks, err := b.repo.FindFolders(ctx, homeSetPath)
+	addressbooks, err := s.repo.FindFolders(ctx, homeSetPath)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(addressbooks) == 0 {
-		defaultAB, err := b.CreateDefaultAddressBook(ctx)
+		defaultAB, err := s.CreateDefaultAddressBook(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -84,13 +84,13 @@ func (b *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, 
 	return addressbooks, nil
 }
 
-func (b *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	addressbooks, err := b.repo.FindFolders(ctx, homeSetPath)
+	addressbooks, err := s.repo.FindFolders(ctx, homeSetPath)
 	if err != nil {
 		return nil, err
 	}
@@ -103,40 +103,40 @@ func (b *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.
 	return nil, fmt.Errorf("addressbook for path: %s not found", urlPath)
 }
 
-func (b *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = b.repo.CreateFolder(ctx, homeSetPath, addressBook)
+	err = s.repo.CreateFolder(ctx, homeSetPath, addressBook)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
+func (s *backend) DeleteAddressBook(ctx context.Context, path string) error {
 	//TODO
-	//addressbook, err := b.GetAddressBook(ctx, path)
+	//addressbook, err := s.GetAddressBook(ctx, path)
 	//if err != nil {
 	//	return err
 	//}
-	//err = b.repo.DeleteFolder(ctx, addressbook)
+	//err = s.repo.DeleteFolder(ctx, addressbook)
 	//if err != nil {
 	//	return err
 	//}
 	return nil
 }
 
-func (b *backend) GetAddressObject(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) GetAddressObject(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	splitPath := strings.Split(strings.TrimPrefix(urlPath, homeSetPath), "/")
-	addressObjects, err := b.repo.FindAddressObjects(ctx, homeSetPath, splitPath[0])
+	addressObjects, err := s.repo.FindAddressObjects(ctx, homeSetPath, splitPath[0])
 	if err != nil {
 		return nil, err
 	}
@@ -150,14 +150,14 @@ func (b *backend) GetAddressObject(ctx context.Context, urlPath string, req *car
 	return nil, fmt.Errorf("address object for path: %s not found", urlPath)
 }
 
-func (b *backend) ListAddressObjects(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) ListAddressObjects(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	abUID := path.Clean(strings.TrimPrefix(urlPath, homeSetPath))
-	addressObjects, err := b.repo.FindAddressObjects(ctx, homeSetPath, abUID)
+	addressObjects, err := s.repo.FindAddressObjects(ctx, homeSetPath, abUID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,13 +166,13 @@ func (b *backend) ListAddressObjects(ctx context.Context, urlPath string, req *c
 
 }
 
-func (b *backend) QueryAddressObjects(ctx context.Context, urlPath string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+func (s *backend) QueryAddressObjects(ctx context.Context, urlPath string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
 	//TODO
 	return nil, nil
 }
 
-func (b *backend) PutAddressObject(ctx context.Context, urlPath string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
-	homeSetPath, err := b.AddressBookHomeSetPath(ctx)
+func (s *backend) PutAddressObject(ctx context.Context, urlPath string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -188,22 +188,22 @@ func (b *backend) PutAddressObject(ctx context.Context, urlPath string, card vca
 		Card:    card,
 	}
 
-	err = b.repo.PutAddressObject(ctx, homeSetPath, &ao, opts)
+	err = s.repo.PutAddressObject(ctx, homeSetPath, &ao, opts)
 	if err != nil {
 		return nil, err
 	}
 	return &ao, nil
 }
 
-func (b *backend) DeleteAddressObject(ctx context.Context, urlPath string) error {
+func (s *backend) DeleteAddressObject(ctx context.Context, urlPath string) error {
 	//TODO
 	return nil
 }
 
-func (b *backend) GetPrivileges(ctx context.Context) []string {
+func (s *backend) GetPrivileges(ctx context.Context) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
 
-func (b *backend) GetAddressBookPrivileges(ctx context.Context, ab *carddav.AddressBook) []string {
+func (s *backend) GetAddressBookPrivileges(ctx context.Context, ab *carddav.AddressBook) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
