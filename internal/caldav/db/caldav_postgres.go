@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"path"
 	"strconv"
-	"time"
 
 	backend "github.com/Raimguzhinov/dav-go/internal/caldav"
 	"github.com/Raimguzhinov/dav-go/internal/caldav/db/models"
@@ -286,36 +285,12 @@ func (r *repository) createEvent(
 		return err
 	}
 
-	shouldRemoveRecur := false
 	if val := recurCnt.Get(); val != nil {
-		cnt := val.(int)
-		if cnt == 1 {
+		if cnt := val.(int); cnt == 1 {
 			r.logger.Debug("postgres.createEvent should remove recurrence", slog.Int("parentID", parentID))
-			shouldRemoveRecur = true
-		} else if cnt > 1 {
-			rs, err := event.RecurrenceSet(time.UTC)
-			if err != nil {
+			if err := r.removeRecurrence(ctx, tx, parentID); err != nil {
 				return err
 			}
-			if rs != nil {
-				var pgRS models.RecurrenceSet
-				_, err := r.scanRecurrence(ctx, parentID, &pgRS)
-				if err != nil {
-					return err
-				}
-				modelRRuleString := rs.GetRRule().Options.RRuleString()
-				pgRRule, _ := pgRS.ToDomain()
-				pgRRuleString := pgRRule.String()
-				if modelRRuleString != pgRRuleString {
-					r.logger.Debug("postgres.createEvent should remove recurrence because recurrence changed", slog.Int("parentID", parentID))
-					shouldRemoveRecur = true
-				}
-			}
-		}
-	}
-	if shouldRemoveRecur {
-		if err := r.removeRecurrence(ctx, tx, parentID); err != nil {
-			return err
 		}
 	}
 
@@ -358,7 +333,7 @@ func (r *repository) createEvent(
 			return err
 		}
 
-		if rs.Exceptions != nil && !shouldRemoveRecur {
+		if rs.Exceptions != nil { //&& !shouldRemoveRecur {
 			for _, ex := range rs.Exceptions {
 				batch.Queue(`
 					INSERT INTO caldav.recurrence_exception
@@ -402,90 +377,15 @@ func (r *repository) createEvent(
 		}
 	}
 
-	//var customProps []models.Prop
-	//for k, v := range event.Properties {
-	//	if strings.HasPrefix(k, "X-") {
-	//		var custom models.Prop
-	//
-	//		custom.ParentID = parentID
-	//		custom.Name = v[0].Name
-	//		custom.ParamName = string(v[0].ValueType())
-	//		custom.Value = v[0].Value
-	//
-	//		customProps = append(customProps, custom)
-	//	}
-	//}
-	//r.logger.Debug("scanned custom prop", slog.Any("prop", customProps))
-	//
-	//for _, cp := range customProps {
-	//	batch.Queue(`
-	//		INSERT INTO caldav.custom_property
-	//		(
-	//		 	calendar_file_uid,
-	//			event_component_id,
-	//			prop_name,
-	//			parameter_name,
-	//			value
-	//		) VALUES ($1, $2, $3, $4, $5)
-	//		ON CONFLICT (calendar_file_uid, event_component_id, prop_name) DO UPDATE SET
-	//			parameter_name = EXCLUDED.parameter_name,
-	//			value = EXCLUDED.value
-	//	`, uid, cp.ParentID, cp.Name, cp.ParamName, cp.Value)
-	//}
-
 	return nil
 }
 
 func (r *repository) removeRecurrence(ctx context.Context, tx *postgres.Tx, parentID int) error {
-	var childEvents []int
-
-	rows, err := tx.Query(ctx, `
-				DELETE FROM caldav.recurrence_exception
-				WHERE recurrence_id = (SELECT id FROM caldav.recurrence WHERE event_component_id = $1)
-				RETURNING event_component_id
-			`, parentID)
+	_, err := tx.Exec(ctx, `DELETE FROM caldav.recurrence WHERE event_component_id = $1`, parentID)
 	if err != nil {
 		err = r.client.ToPgErr(err)
 		r.logger.Error("postgres.createEvent", logger.Err(err))
 		return err
-	}
-
-	for rows.Next() {
-		var childID int
-		err := rows.Scan(&childID)
-		if err != nil {
-			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.createEvent", logger.Err(err))
-			return err
-		}
-		if childID == parentID {
-			continue
-		}
-		childEvents = append(childEvents, childID)
-	}
-
-	_, err = tx.Exec(ctx, `DELETE FROM caldav.recurrence WHERE event_component_id = $1`, parentID)
-	if err != nil {
-		err = r.client.ToPgErr(err)
-		r.logger.Error("postgres.createEvent", logger.Err(err))
-		return err
-	}
-
-	for _, childID := range childEvents {
-		r.logger.Debug("postgres.createEvent delete recurrence", slog.Int("childID", childID))
-
-		//_, err = tx.Exec(ctx, `DELETE FROM caldav.custom_property WHERE event_component_id = $1`, childID)
-		//if err != nil {
-		//	err = r.client.ToPgErr(err)
-		//	r.logger.Error("postgres.createEvent", logger.Err(err))
-		//	return err
-		//}
-		_, err = tx.Exec(ctx, `DELETE FROM caldav.event_component WHERE id = $1`, childID)
-		if err != nil {
-			err = r.client.ToPgErr(err)
-			r.logger.Error("postgres.createEvent", logger.Err(err))
-			return err
-		}
 	}
 	return nil
 }
@@ -563,39 +463,6 @@ func (r *repository) GetCalendar(
 			r.logger.Error("postgres.GetCalendar", logger.Err(err))
 			return nil, err
 		}
-
-		//subrows, err := r.client.Pool.Query(ctx, `
-		//	SELECT
-		//		prop_name,
-		//		parameter_name,
-		//		value
-		//	FROM
-		//		caldav.custom_property
-		//	WHERE
-		//		calendar_file_uid = $1
-		//		AND event_component_id = $2
-		//`, uid, eventID)
-		//if err != nil {
-		//	err = r.client.ToPgErr(err)
-		//	r.logger.Error("postgres.GetCalendar", logger.Err(err))
-		//	return nil, err
-		//}
-		//
-		//for subrows.Next() {
-		//	var prop models.Prop
-		//
-		//	err = subrows.Scan(
-		//		&prop.Name,
-		//		&prop.ParamName,
-		//		&prop.Value,
-		//	)
-		//	if err != nil {
-		//		err = r.client.ToPgErr(err)
-		//		r.logger.Error("postgres.GetCalendar", logger.Err(err))
-		//		return nil, err
-		//	}
-		//	event.CustomProps = append(event.CustomProps, prop)
-		//}
 
 		var rs models.RecurrenceSet
 		recurrenceID, err := r.scanRecurrence(ctx, eventID, &rs)

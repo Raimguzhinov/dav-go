@@ -43,6 +43,16 @@ test:
 	gotestsum --format pkgname --raw-command go test -json -cover -count=1 ./...
 .PHONY: test
 
+raw-event:
+	@if [ -z "$(FILE_UID)" ] || [ -z "$(NAME)" ]; then \
+		echo "Usage: make raw-event FILE_UID=<uuid> NAME=<testcase_name>"; \
+		exit 1; \
+	fi
+	curl "http://$(HTTP_SERVER_USER):$(HTTP_SERVER_PASSWORD)@$(HTTP_SERVER_IP):$(HTTP_SERVER_PORT)/$(HTTP_SERVER_USER)/calendars/1/$(FILE_UID).ics" \
+		| tee tests/cases/$(NAME).in.ics
+	cp tests/cases/$(NAME).in.ics tests/cases/$(NAME).out.ics
+.PHONY: raw-event
+
 bin-deps:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	go install github.com/golang/mock/mockgen@latest
