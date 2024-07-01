@@ -103,16 +103,16 @@ CREATE TABLE IF NOT EXISTS caldav.attendee
 
 CREATE TABLE IF NOT EXISTS caldav.alarm
 (
-    id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    event_component_id        BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
-    action                    VARCHAR(15) NOT NULL,
-    trigger_absolute_datetime DATE,
-    trigger_relative_offset   BIGINT,
-    trigger_related_start     BIT,
-    summary                   VARCHAR(255),
-    description               TEXT,
-    duration                  BIGINT,
-    repeat                    INT
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_component_id BIGINT UNIQUE REFERENCES caldav.event_component (id) ON DELETE CASCADE,
+    action             VARCHAR(15) NOT NULL,
+    trigger            VARCHAR(15) NOT NULL,
+    attachment_id      BIGINT UNIQUE REFERENCES caldav.attachment (id) ON DELETE CASCADE,
+    summary            VARCHAR(255),
+    description        TEXT,
+    attendee_id        BIGINT REFERENCES caldav.attendee (id) ON DELETE CASCADE,
+    duration           TIMESTAMP,
+    repeat             SMALLINT
 );
 
 CREATE TABLE IF NOT EXISTS caldav.recurrence
