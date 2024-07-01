@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Raimguhinov/dav-go/pkg/logger"
+	"github.com/Raimguzhinov/dav-go/pkg/logger"
 	"github.com/fatih/color"
 	"github.com/go-chi/chi/v5/middleware"
 )

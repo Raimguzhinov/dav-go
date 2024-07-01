@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	backend "github.com/Raimguhinov/dav-go/internal/caldav"
-	"github.com/Raimguhinov/dav-go/internal/caldav/db/models"
-	"github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/Raimguhinov/dav-go/pkg/postgres"
-	"github.com/Raimguhinov/dav-go/pkg/utils"
+	backend "github.com/Raimguzhinov/dav-go/internal/caldav"
+	"github.com/Raimguzhinov/dav-go/internal/caldav/db/models"
+	"github.com/Raimguzhinov/dav-go/pkg/logger"
+	"github.com/Raimguzhinov/dav-go/pkg/postgres"
+	"github.com/Raimguzhinov/dav-go/pkg/utils"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/emersion/go-ical"
@@ -24,7 +24,7 @@ type repository struct {
 	logger *logger.Logger
 }
 
-func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Repository {
+func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.RepositoryCaldav {
 	return &repository{
 		client: client,
 		logger: logger,

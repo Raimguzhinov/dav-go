@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/Raimguhinov/dav-go/internal/config"
+	"github.com/Raimguzhinov/dav-go/internal/config"
 )
 
 func NewFromURL(cfg *config.Config, authURL string) (AuthProvider, error) {

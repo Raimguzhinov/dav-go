@@ -1,4 +1,4 @@
-module github.com/Raimguhinov/dav-go
+module github.com/Raimguzhinov/dav-go
 
 go 1.22.2
 

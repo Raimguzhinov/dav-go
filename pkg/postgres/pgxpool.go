@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	adapter "github.com/Raimguhinov/dav-go/pkg/logger"
+	adapter "github.com/Raimguzhinov/dav-go/pkg/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

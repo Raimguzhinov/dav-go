@@ -84,15 +84,15 @@ message DeleteCalendarObjectResponse {
 message FreeBusy {
   bytes uid = 1;
   uint64 timestamp = 2;
-  uint64 start_time = 3;
-  uint64 end_time = 4;
-  string url = 5;
-  string contact = 6;
-  CalendarUserAddress organizer = 7;
+  optional uint64 start_time = 3;
+  optional uint64 end_time = 4;
+  optional string url = 5;
+  optional string contact = 6;
+  optional CalendarUserAddress organizer = 7;
   repeated CalendarUserAddress attendee = 8;
-  string comment = 9;
-  string free_busy = 10;
-  string recurrence_status = 11;
+  optional string comment = 9;
+  optional string free_busy = 10;
+  optional string recurrence_status = 11;
   optional google.protobuf.Struct x_prop = 12;
   optional google.protobuf.Struct iana_prop = 13;
 }
@@ -101,30 +101,30 @@ message Event {
   bytes uid = 1;
   int64 timestamp = 2;
   int64 start_time = 3;
-  int64 end_time = 4;
-  int64 duration = 5; // todo
-  string summary = 6;
-  string class = 7;
-  string description = 8;
-  string url = 9;
-  int64 created = 10;
-  int64 last_modified = 11;
-  bool status = 12;
-  bool transparent = 13;
-  string geo = 14;
-  string location = 15;
-  uint32  priority = 16;
-  uint32 sequence = 17;
-  string categories = 18;
-  string attach = 19;
-  string comment = 20;
-  string contact = 21;
-  string request_status = 22;
-  string related = 23;
-  string resources = 24;
-  CalendarUserAddress organizer = 25;
+  optional int64 end_time = 4;
+  optional int64 duration = 5;
+  optional string summary = 6;
+  optional string class = 7;
+  optional string description = 8;
+  optional string url = 9;
+  optional int64 created = 10;
+  optional int64 last_modified = 11;
+  optional bool status = 12;
+  optional bool transparent = 13;
+  optional string geo = 14;
+  optional string location = 15;
+  optional uint32  priority = 16;
+  optional uint32 sequence = 17;
+  optional string categories = 18;
+  optional string attach = 19;
+  optional string comment = 20;
+  optional string contact = 21;
+  optional string request_status = 22;
+  optional string related = 23;
+  optional string resources = 24;
+  optional CalendarUserAddress organizer = 25;
   repeated CalendarUserAddress attendee = 26;
-  RecurrenceInfo recurrence_set = 27;
+  optional RecurrenceInfo recurrence_set = 27;
   optional google.protobuf.Struct x_prop = 28;
   optional google.protobuf.Struct iana_prop = 29;
 }
@@ -146,7 +146,7 @@ message RecurrenceInfo {
   bytes uid = 1;
   uint64 recurrence_id = 2;
   uint64 date = 3;
-  RRule rrule = 4;
+  optional RRule rrule = 4;
   repeated uint64 exdates = 5;
 }
 

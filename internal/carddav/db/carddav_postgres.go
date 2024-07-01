@@ -1,13 +1,13 @@
-package carddav_db
+package db
 
 import (
 	"context"
 	"path"
 	"strings"
 
-	backend "github.com/Raimguhinov/dav-go/internal/carddav"
-	"github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	backend "github.com/Raimguzhinov/dav-go/internal/carddav"
+	"github.com/Raimguzhinov/dav-go/pkg/logger"
+	"github.com/Raimguzhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav/carddav"
 	"github.com/google/uuid"
 )
@@ -17,7 +17,7 @@ type repository struct {
 	logger *logger.Logger
 }
 
-func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.Repository {
+func NewRepository(client *postgres.Postgres, logger *logger.Logger) backend.RepositoryCarddav {
 	return &repository{
 		client: client,
 		logger: logger,

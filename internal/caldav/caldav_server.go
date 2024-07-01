@@ -10,27 +10,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Raimguhinov/dav-go/internal/delivery/grpc"
-	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
+	"github.com/Raimguzhinov/dav-go/internal/delivery/grpc"
+	"github.com/Raimguzhinov/dav-go/internal/usecase/etag"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/emersion/go-ical"
 	"github.com/google/uuid"
 )
 
-type backend struct {
+type caldavServer struct {
 	webdav.UserPrincipalBackend
 	prefix string
-	repo   Repository
-	s      grpc.CalendarServer
+	repo   RepositoryCaldav
+	gs     grpc.CalendarServer
 }
 
 func New(
 	upBackend webdav.UserPrincipalBackend,
 	prefix string,
-	repository Repository,
+	repository RepositoryCaldav,
 ) (caldav.Backend, error) {
-	s := &backend{
+	s := &caldavServer{
 		UserPrincipalBackend: upBackend,
 		prefix:               prefix,
 		repo:                 repository,
@@ -39,7 +39,7 @@ func New(
 	return s, nil
 }
 
-func (s *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+func (s *caldavServer) CalendarHomeSetPath(ctx context.Context) (string, error) {
 	upPath, err := s.CurrentUserPrincipal(ctx)
 	if err != nil {
 		return "", err
@@ -48,7 +48,7 @@ func (s *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
 	return path.Join(upPath, s.prefix) + "/", nil
 }
 
-func (s *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
+func (s *caldavServer) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
 	homeSetPath, err := s.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return err
@@ -62,7 +62,7 @@ func (s *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	return nil
 }
 
-func (s *backend) createDefaultCalendar(ctx context.Context, name string) error {
+func (s *caldavServer) createDefaultCalendar(ctx context.Context, name string) error {
 	if err := s.CreateCalendar(ctx, &caldav.Calendar{
 		Name:                  name,
 		Description:           "Protei Calendar",
@@ -74,7 +74,7 @@ func (s *backend) createDefaultCalendar(ctx context.Context, name string) error 
 	return nil
 }
 
-func (s *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+func (s *caldavServer) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
 	cals, err := s.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (s *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 	return cals, nil
 }
 
-func (s *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
+func (s *caldavServer) GetCalendar(ctx context.Context, urlPath string) (*caldav.Calendar, error) {
 	cals, err := s.repo.FindCalendars(ctx)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *backend) GetCalendar(ctx context.Context, urlPath string) (*caldav.Cale
 	return nil, fmt.Errorf("calendar for path: %s not found", urlPath)
 }
 
-func (s *backend) GetCalendarObject(
+func (s *caldavServer) GetCalendarObject(
 	ctx context.Context,
 	objPath string,
 	req *caldav.CalendarCompRequest,
@@ -157,7 +157,7 @@ func (s *backend) GetCalendarObject(
 	return obj, nil
 }
 
-func (s *backend) ListCalendarObjects(
+func (s *caldavServer) ListCalendarObjects(
 	ctx context.Context,
 	urlPath string,
 	req *caldav.CalendarCompRequest,
@@ -191,7 +191,7 @@ func (s *backend) ListCalendarObjects(
 	return objs, nil
 }
 
-func (s *backend) QueryCalendarObjects(
+func (s *caldavServer) QueryCalendarObjects(
 	ctx context.Context,
 	urlPath string,
 	query *caldav.CalendarQuery,
@@ -225,7 +225,7 @@ func (s *backend) QueryCalendarObjects(
 	return caldav.Filter(query, objs)
 }
 
-func (s *backend) PutCalendarObject(
+func (s *caldavServer) PutCalendarObject(
 	ctx context.Context,
 	objPath string,
 	calendar *ical.Calendar,
@@ -294,15 +294,15 @@ func (s *backend) PutCalendarObject(
 	return s.repo.UpgradeCalendarObject(ctx, uid, eventType, obj, opts)
 }
 
-func (s *backend) DeleteCalendarObject(ctx context.Context, path string) error {
+func (s *caldavServer) DeleteCalendarObject(ctx context.Context, path string) error {
 	//delete(s.objectMap, path)
 	return nil
 }
 
-func (s *backend) GetPrivileges(ctx context.Context) []string {
+func (s *caldavServer) GetPrivileges(ctx context.Context) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
 
-func (s *backend) GetCalendarPrivileges(ctx context.Context, cal *caldav.Calendar) []string {
+func (s *caldavServer) GetCalendarPrivileges(ctx context.Context, cal *caldav.Calendar) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }

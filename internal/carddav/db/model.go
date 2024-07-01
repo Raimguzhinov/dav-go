@@ -1,4 +1,4 @@
-package carddav_db
+package db
 
 import (
 	"encoding/base64"

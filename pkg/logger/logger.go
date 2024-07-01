@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Raimguhinov/dav-go/pkg/logger/slogpretty"
+	"github.com/Raimguzhinov/dav-go/pkg/logger/slogpretty"
 )
 
 const (

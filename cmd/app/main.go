@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/Raimguhinov/dav-go/internal/app"
-	"github.com/Raimguhinov/dav-go/internal/config"
+	"github.com/Raimguzhinov/dav-go/internal/app"
+	"github.com/Raimguzhinov/dav-go/internal/config"
 )
 
 func main() {

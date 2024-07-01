@@ -9,28 +9,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
+	"github.com/Raimguzhinov/dav-go/internal/usecase/etag"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/carddav"
 	"github.com/emersion/go-vcard"
 	"github.com/google/uuid"
 )
 
-type backend struct {
+type carddavServer struct {
 	webdav.UserPrincipalBackend
 	prefix string
-	repo   Repository
+	repo   RepositoryCarddav
 }
 
-func New(upBackend webdav.UserPrincipalBackend, prefix string, repository Repository) (*backend, error) {
-	return &backend{
+func New(upBackend webdav.UserPrincipalBackend, prefix string, repository RepositoryCarddav) (carddav.Backend, error) {
+	return &carddavServer{
 		UserPrincipalBackend: upBackend,
 		prefix:               prefix,
 		repo:                 repository,
 	}, nil
 }
 
-func (s *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
+func (s *carddavServer) AddressBookHomeSetPath(ctx context.Context) (string, error) {
 	upPath, err := s.CurrentUserPrincipal(ctx)
 	if err != nil {
 		return "", err
@@ -38,7 +38,7 @@ func (s *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
 	return path.Join(upPath, s.prefix) + "/", nil
 }
 
-func (s *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.AddressBook, error) {
+func (s *carddavServer) CreateDefaultAddressBook(ctx context.Context) (*carddav.AddressBook, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (s *backend) CreateDefaultAddressBook(ctx context.Context) (*carddav.Addres
 	return &ab, nil
 }
 
-func (s *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
+func (s *carddavServer) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (s *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, 
 	return addressbooks, nil
 }
 
-func (s *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
+func (s *carddavServer) GetAddressBook(ctx context.Context, urlPath string) (*carddav.AddressBook, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (s *backend) GetAddressBook(ctx context.Context, urlPath string) (*carddav.
 	return nil, fmt.Errorf("addressbook for path: %s not found", urlPath)
 }
 
-func (s *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
+func (s *carddavServer) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (s *backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 	return nil
 }
 
-func (s *backend) DeleteAddressBook(ctx context.Context, path string) error {
+func (s *carddavServer) DeleteAddressBook(ctx context.Context, path string) error {
 	//TODO
 	//addressbook, err := s.GetAddressBook(ctx, path)
 	//if err != nil {
@@ -129,7 +129,7 @@ func (s *backend) DeleteAddressBook(ctx context.Context, path string) error {
 	return nil
 }
 
-func (s *backend) GetAddressObject(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+func (s *carddavServer) GetAddressObject(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (s *backend) GetAddressObject(ctx context.Context, urlPath string, req *car
 	return nil, fmt.Errorf("address object for path: %s not found", urlPath)
 }
 
-func (s *backend) ListAddressObjects(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+func (s *carddavServer) ListAddressObjects(ctx context.Context, urlPath string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -166,12 +166,12 @@ func (s *backend) ListAddressObjects(ctx context.Context, urlPath string, req *c
 
 }
 
-func (s *backend) QueryAddressObjects(ctx context.Context, urlPath string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+func (s *carddavServer) QueryAddressObjects(ctx context.Context, urlPath string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
 	//TODO
 	return nil, nil
 }
 
-func (s *backend) PutAddressObject(ctx context.Context, urlPath string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+func (s *carddavServer) PutAddressObject(ctx context.Context, urlPath string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
 	homeSetPath, err := s.AddressBookHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -195,15 +195,15 @@ func (s *backend) PutAddressObject(ctx context.Context, urlPath string, card vca
 	return &ao, nil
 }
 
-func (s *backend) DeleteAddressObject(ctx context.Context, urlPath string) error {
+func (s *carddavServer) DeleteAddressObject(ctx context.Context, urlPath string) error {
 	//TODO
 	return nil
 }
 
-func (s *backend) GetPrivileges(ctx context.Context) []string {
+func (s *carddavServer) GetPrivileges(ctx context.Context) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }
 
-func (s *backend) GetAddressBookPrivileges(ctx context.Context, ab *carddav.AddressBook) []string {
+func (s *carddavServer) GetAddressBookPrivileges(ctx context.Context, ab *carddav.AddressBook) []string {
 	return []string{"all", "read", "write", "write-properties", "write-content", "unlock", "bind", "unbind", "write-acl", "read-acl", "read-current-user-privilege-set"}
 }

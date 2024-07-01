@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/Raimguhinov/dav-go/internal/usecase/repo"
-	"github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/Raimguzhinov/dav-go/internal/usecase/repo"
+	"github.com/Raimguzhinov/dav-go/pkg/logger"
+	"github.com/Raimguzhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/ceres919/go-webdav/carddav"

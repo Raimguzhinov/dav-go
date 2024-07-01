@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	"github.com/Raimguhinov/dav-go/tests/suite"
+	"github.com/Raimguzhinov/dav-go/tests/suite"
 )
 
 func TestCustomProps_WeakTypes(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Raimguhinov/dav-go/pkg/logger/slogpretty"
+	"github.com/Raimguzhinov/dav-go/pkg/logger/slogpretty"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/tracelog"
 )

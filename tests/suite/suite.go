@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Raimguhinov/dav-go/internal/config"
-	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/Raimguzhinov/dav-go/internal/config"
+	"github.com/Raimguzhinov/dav-go/pkg/postgres"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/google/uuid"

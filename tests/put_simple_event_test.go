@@ -4,7 +4,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/Raimguhinov/dav-go/tests/suite"
+	"github.com/Raimguzhinov/dav-go/tests/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

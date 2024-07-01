@@ -7,7 +7,7 @@ import (
 	"github.com/emersion/go-ical"
 )
 
-type Repository interface {
+type RepositoryCaldav interface {
 	CreateCalendar(ctx context.Context, homeSetPath string, calendar *caldav.Calendar) error
 	FindCalendars(ctx context.Context) ([]caldav.Calendar, error)
 	GetCalendarObjectInfo(ctx context.Context, uid string) (*caldav.CalendarObject, error)

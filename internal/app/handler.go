@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Raimguhinov/dav-go/internal/auth"
+	"github.com/Raimguzhinov/dav-go/internal/auth"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
 	"github.com/ceres919/go-webdav/carddav"

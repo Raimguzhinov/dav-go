@@ -8,11 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Raimguhinov/dav-go/internal/auth"
-	"github.com/Raimguhinov/dav-go/internal/config"
-	"github.com/Raimguhinov/dav-go/internal/delivery/http/v1"
-	"github.com/Raimguhinov/dav-go/pkg/logger"
-	"github.com/Raimguhinov/dav-go/pkg/postgres"
+	"github.com/Raimguzhinov/dav-go/internal/auth"
+	"github.com/Raimguzhinov/dav-go/internal/config"
+	"github.com/Raimguzhinov/dav-go/pkg/logger"
+	"github.com/Raimguzhinov/dav-go/pkg/postgres"
 )
 
 func Run(cfg *config.Config) {
