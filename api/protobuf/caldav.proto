@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package calendar.api;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/Raimguzhinov/dav-go/internal/delivery/grpc";
+
+service Calendar {
+  rpc FolderList(FolderListRequest) returns (FolderListResponse); // ListCalendars
+  rpc GetFolder(FolderRequest) returns (FolderInfo); // GetCalendar
+  rpc CreateFolder(CreateFolderRequest) returns (FolderResponse); //
+  rpc DeleteFolder(FolderRequest) returns (FolderResponse); //
+  rpc CalendarObjectList(FolderRequest) returns (CalendarObjectListResponse); // ListCalendarObjects
+  rpc GetCalendarObject(CalendarObjectRequest) returns (CalendarObjectInfo); // GetCalendarObject
+  rpc PutCalendarObject(CalendarObjectInfo) returns (PutCalendarObjectResponse); // PutCalendarObject
+  rpc DeleteEvent(CalendarObjectRequest) returns (DeleteCalendarObjectResponse); // DeleteCalendarObject
+}
+
+message FolderListRequest {
+  bytes sender_uid = 1;
+}
+
+message FolderListResponse {
+  repeated FolderInfo folders = 1;
+}
+
+message FolderRequest {
+  bytes sender_uid = 1;
+  bytes folder_uid = 2;
+}
+
+enum Types {
+  event = 0;
+  todo = 1;
+  journal = 2;
+}
+
+message CreateFolderRequest {
+  bytes sender_uid = 1;
+  bytes folder_uid = 2;
+  FolderInfo folder = 3;
+}
+
+message FolderInfo {
+  bytes uid = 1;
+  string name = 2;
+  optional string description = 3;
+  optional Types supported_types = 4;
+  optional uint64 max_size = 5;
+}
+
+message FolderResponse {
+  bytes folder_uid = 1;
+}
+
+message CalendarObjectListResponse {
+  repeated Event events = 1;
+}
+
+message CalendarObjectRequest {
+  bytes sender_uid = 1;
+  bytes folder_uid = 2;
+  bytes object_uid = 3;
+}
+
+message CalendarObjectInfo {
+  bytes sender_uid = 1;
+  bytes folder_uid = 2;
+  bytes etag = 3;
+  repeated Event events = 4;
+  optional FreeBusy free_busy = 5;
+}
+
+message PutCalendarObjectResponse {
+  bytes object_uid = 1;
+  bytes etag = 2;
+}
+
+message DeleteCalendarObjectResponse {
+  bytes object_uid = 1;
+}
+
+message FreeBusy {
+  bytes uid = 1;
+  uint64 timestamp = 2;
+  uint64 start_time = 3;
+  uint64 end_time = 4;
+  string url = 5;
+  string contact = 6;
+  CalendarUserAddress organizer = 7;
+  repeated CalendarUserAddress attendee = 8;
+  string comment = 9;
+  string free_busy = 10;
+  string recurrence_status = 11;
+  optional google.protobuf.Struct x_prop = 12;
+  optional google.protobuf.Struct iana_prop = 13;
+}
+
+message Event {
+  bytes uid = 1;
+  int64 timestamp = 2;
+  int64 start_time = 3;
+  int64 end_time = 4;
+  int64 duration = 5; // todo
+  string summary = 6;
+  string class = 7;
+  string description = 8;
+  string url = 9;
+  int64 created = 10;
+  int64 last_modified = 11;
+  bool status = 12;
+  bool transparent = 13;
+  string geo = 14;
+  string location = 15;
+  uint32  priority = 16;
+  uint32 sequence = 17;
+  string categories = 18;
+  string attach = 19;
+  string comment = 20;
+  string contact = 21;
+  string request_status = 22;
+  string related = 23;
+  string resources = 24;
+  CalendarUserAddress organizer = 25;
+  repeated CalendarUserAddress attendee = 26;
+  RecurrenceInfo recurrence_set = 27;
+  optional google.protobuf.Struct x_prop = 28;
+  optional google.protobuf.Struct iana_prop = 29;
+}
+
+message Alarm {
+  string action = 1;
+  int64 trigger = 2;
+  optional int64 duration = 3;
+  optional int64 repeat = 4;
+  optional string summary = 5;
+  optional string description = 6;
+  optional CalendarUserAddress attendee = 7;
+  repeated string attach = 8;
+  optional google.protobuf.Struct x_prop = 9;
+  optional google.protobuf.Struct iana_prop = 10;
+}
+
+message RecurrenceInfo {
+  bytes uid = 1;
+  uint64 recurrence_id = 2;
+  uint64 date = 3;
+  RRule rrule = 4;
+  repeated uint64 exdates = 5;
+}
+
+message RRule {
+  string freq = 1;
+  optional int64 end_time = 2;
+  optional int64 count = 3;
+  optional int64 interval = 4;
+  optional int64 by_second = 5;
+  optional int64 by_minute = 6;
+  optional int64 by_hour = 7;
+  optional int64 by_day = 8;
+  optional int64 by_month_day = 9;
+  optional int64 by_year_day = 10;
+  optional int64 by_week_no = 11;
+  optional int64 by_month = 12;
+  optional int64 by_set_pos = 13;
+  optional string wkst = 14;
+  // todo уточнить типы
+}
+
+message CalendarUserAddress {
+  bytes uid = 1;
+  string address = 2;
+  optional string name = 3;
+  optional string user_type = 4;
+  optional CalendarUserAddress delegate_from = 5;
+  optional CalendarUserAddress delegate_to = 6;
+  optional string dir = 7;
+  optional CalendarUserAddress member = 8;
+  optional string participation_status = 9;
+  optional string role = 10;
+  optional bool rsvp = 11;
+  optional CalendarUserAddress sent_by = 12;
+}

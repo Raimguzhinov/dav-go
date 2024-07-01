@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Raimguhinov/dav-go/internal/delivery/grpc"
 	"github.com/Raimguhinov/dav-go/internal/usecase/etag"
 	"github.com/ceres919/go-webdav"
 	"github.com/ceres919/go-webdav/caldav"
@@ -21,6 +22,7 @@ type backend struct {
 	webdav.UserPrincipalBackend
 	prefix string
 	repo   Repository
+	s      grpc.CalendarServer
 }
 
 func New(

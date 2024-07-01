@@ -46,3 +46,10 @@ test:
 bin-deps:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	go install github.com/golang/mock/mockgen@latest
+
+generate:
+	protoc --proto_path=api --go_out=. \
+		--go_opt=module=github.com/Raimguzhinov/dav-go \
+		--go-grpc_out=. --go-grpc_opt=module=github.com/Raimguzhinov/dav-go \
+		api/protobuf/caldav.proto
+.PHONY: generate
